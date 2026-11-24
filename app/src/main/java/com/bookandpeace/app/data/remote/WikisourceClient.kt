@@ -145,7 +145,7 @@ class WikisourceClient(
                         author = if (lang == "vi") "Wikisource Tiếng Việt" else "Wikisource Thế giới",
                         description = snippet.ifBlank {
                             if (lang == "vi") "Tác phẩm tiếng Việt từ Wikisource"
-                            else "Tác phẩm kinh điển thế giới (hỗ trợ kể chuyện Văn Vở tiếng Việt)"
+                            else "Tác phẩm kinh điển thế giới (hỗ trợ Sách nói Kể Chuyện Sâu tiếng Việt)"
                         },
                         category = if (lang == "vi") "Văn học VN" else "Thế giới",
                         language = lang,

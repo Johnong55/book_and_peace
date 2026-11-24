@@ -302,7 +302,7 @@ fun ReaderScreen(
                             }
                         }
                         IconButton(onClick = { onOpenStoryteller(bookId) }) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "Kể Văn Vở", tint = palette.secondaryAccent)
+                            Icon(Icons.Default.AutoAwesome, contentDescription = "Kể Chuyện Sâu", tint = palette.secondaryAccent)
                         }
                         IconButton(onClick = { showEyeComfortSheet = true }) {
                             Icon(Icons.Default.RemoveRedEye, contentDescription = "Bảo vệ mắt & Máy đọc sách")

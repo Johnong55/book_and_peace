@@ -491,7 +491,7 @@ private fun SimpleBookRow(
         FilledTonalIconButton(onClick = onStoryteller) {
             Icon(
                 if (hasReadyAudio) Icons.Default.Headphones else Icons.Default.AutoAwesome,
-                contentDescription = "Kể chuyện Văn Vở",
+                contentDescription = "Studio Kể Chuyện Sâu",
                 tint = if (hasReadyAudio) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
             )
         }

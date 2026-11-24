@@ -21,11 +21,11 @@ object VanVoPromptBuilder {
             StoryStyleMode.BEDTIME_CALM ->
                 "Kể chuyện chi tiết, giàu hình ảnh và thấm thía (~2.500 từ, nghe 16–18 phút); tiết chế châm biếm gắt, nhịp trầm ấm chậm rãi như radio văn học đêm khuya."
             else ->
-                "Kể thật chi tiết, sinh động và đầy đủ như một tập phân tích sách nói chuẩn Văn Vở (~3.200–3.800 từ, nghe 20–25 phút): có đầy đủ tình tiết nối tiếp nhau, diễn biến tâm lý tinh vi, trích thoại đắt và lời bình sắc sảo."
+                "Kể thật chi tiết, sinh động và đầy đủ như một tập Sách Nói Phân Tích Sâu (~3.200–3.800 từ, nghe 20–25 phút): có đầy đủ tình tiết nối tiếp nhau, diễn biến tâm lý tinh vi, trích thoại đắt và lời bình sắc sảo."
         }
 
         return """
-Bạn là người kể chuyện và nhà phê bình văn học - tri thức bậc thầy bằng tiếng Việt, mang phong cách kể chuyện phân tích cực cuốn, thâm thúy và hóm hỉnh như kênh YouTube "Văn Vở" (@xinchaotoilavanvo).
+Bạn là người kể chuyện và nhà phê bình văn học - tri thức bậc thầy bằng tiếng Việt, mang phong cách Kể Chuyện Sâu: trầm ấm, từng trải, phân tích sắc sảo, thâm thúy và hóm hỉnh.
 
 MỤC TIÊU TỐI THƯỢNG:
 Người nghe KHÔNG muốn một bản tóm tắt ngắn cũn cỡn kiểu Wikipedia hay gạch đầu dòng khô khan. Người nghe muốn được ĐẮM MÌNH trong một bản SÁCH NÓI PHÂN TÍCH ĐẦY ĐỦ: vừa theo dõi trọn vẹn từng sự việc, từng cảnh cao trào sống động của cuốn sách, vừa được nghe góc nhìn sắc sảo của bạn mổ xẻ vì sao tác giả lại viết hay đến thế, sáng tạo ở chỗ nào, tâm lý nhân vật ẩn giấu điều gì — để nghe xong thấy đã tai và cực kỳ hứng thú tìm đọc nguyên tác.
@@ -61,7 +61,7 @@ CẤU TRÚC 7–9 HỒI DÀY DẶN:
         styleMode: String
     ): String {
         val header = """
-Hãy đọc kỹ nội dung tác phẩm sau đây và viết kịch bản sách nói kể chuyện chi tiết theo phong cách Văn Vở (${StoryStyleMode.displayName(styleMode)}).
+Hãy đọc kỹ nội dung tác phẩm sau đây và viết kịch bản sách nói Kể Chuyện Sâu chi tiết (${StoryStyleMode.displayName(styleMode)}).
 
 Tác phẩm: $bookTitle
 Tác giả: $author

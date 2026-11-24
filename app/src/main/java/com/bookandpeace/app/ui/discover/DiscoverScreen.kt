@@ -274,7 +274,7 @@ fun DiscoverScreen(
             if (searchResults == null && activeFilter == DiscoverFilter.DEEP_SUMMARIES) {
                 item {
                     Text(
-                        "Nguồn Tóm tắt Sâu soạn sẵn (gồm cả Nguyễn Nhật Ánh, Khoa học, Văn học VN & Thế giới) — mở đọc & thu âm Văn Vở ngay, tiết kiệm 95–100% token API.",
+                        "Nguồn Sách Nói Phân Tích & Tóm tắt Sâu soạn sẵn (Khoa học, Văn học VN, Nguyễn Nhật Ánh & Thế giới) — mở đọc & thu âm ngay, tiết kiệm 95–100% token API.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

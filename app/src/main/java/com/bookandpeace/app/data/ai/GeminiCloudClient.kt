@@ -51,7 +51,7 @@ class GeminiCloudClient(
         )
 
         val PREBUILT_VOICES = listOf(
-            "Charon" to "Charon — Trầm ấm, dẫn chuyện (Khuyên dùng cho Văn Vở)",
+            "Charon" to "Charon — Trầm ấm, dẫn chuyện (Khuyên dùng cho Kể Chuyện Sâu)",
             "Orus" to "Orus — Trầm chắc, điềm tĩnh",
             "Fenrir" to "Fenrir — Truyền cảm, giàu năng lượng",
             "Puck" to "Puck — Tự nhiên, trẻ trung, hóm hỉnh",
@@ -165,7 +165,7 @@ class GeminiCloudClient(
             summaries.joinToString("\n\n")
         }
 
-        onProgress("Đang viết kịch bản kể chuyện phong cách Văn Vở...")
+        onProgress("Đang viết kịch bản Kể Chuyện Sâu...")
         val systemInstruction = VanVoPromptBuilder.buildSystemInstruction(styleMode)
         val userPrompt = VanVoPromptBuilder.buildUserPrompt(
             bookTitle = bookTitle,

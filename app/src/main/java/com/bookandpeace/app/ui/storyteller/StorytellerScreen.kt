@@ -101,10 +101,10 @@ fun StorytellerScreen(
     var editingScript by remember { mutableStateOf<StoryScriptEntity?>(null) }
 
     val styleOptions = listOf(
-        StoryStyleMode.VAN_VO_QUICK to "Nhanh 5p",
-        StoryStyleMode.VAN_VO_STANDARD to "Chuẩn Văn Vở 15p",
-        StoryStyleMode.VAN_VO_DEEP to "Kể sâu 30p+",
-        StoryStyleMode.BEDTIME_CALM to "Nghe ngủ"
+        StoryStyleMode.VAN_VO_QUICK to "Kể nhanh 10p",
+        StoryStyleMode.VAN_VO_STANDARD to "Kể Chuyện Sâu 20p",
+        StoryStyleMode.VAN_VO_DEEP to "Phân tích sâu 30p+",
+        StoryStyleMode.BEDTIME_CALM to "Đêm khuya"
     )
 
     Scaffold(
@@ -117,7 +117,7 @@ fun StorytellerScreen(
                 },
                 title = {
                     Column {
-                        Text("Kể chuyện Văn Vở", style = MaterialTheme.typography.titleLarge)
+                        Text("Studio Kể Chuyện Sâu", style = MaterialTheme.typography.titleLarge)
                         Text(
                             book?.title.orEmpty(),
                             style = MaterialTheme.typography.labelMedium,
@@ -235,14 +235,14 @@ fun StorytellerScreen(
                                 ttsEngine = selectedTts,
                                 useDeepSummary = useDeepSummarySource
                             )
-                            snackbarHostState.showSnackbar("Đang tạo kịch bản Văn Vở & thu âm chạy ngầm...")
+                            snackbarHostState.showSnackbar("Đang tạo kịch bản Kể Chuyện Sâu & thu âm chạy ngầm...")
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.AutoAwesome, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Tạo Sách nói Văn Vở bằng AI (Chạy ngầm)")
+                    Text("Tạo Sách nói Kể Chuyện Sâu (Chạy ngầm)")
                 }
             }
 

@@ -22,11 +22,11 @@ object StoryStyleMode {
     const val BEDTIME_CALM = "BEDTIME_CALM"
 
     fun displayName(mode: String): String = when (mode) {
-        VAN_VO_QUICK -> "Văn Vở Nhanh (~5–7 phút)"
-        VAN_VO_STANDARD -> "Chuẩn Văn Vở (~15–20 phút)"
-        VAN_VO_DEEP -> "Văn Vở Kể Sâu Chi Tiết (~30+ phút)"
-        BEDTIME_CALM -> "Trầm Ấm Trước Khi Ngủ (~12 phút)"
-        else -> "Chuẩn Văn Vở"
+        VAN_VO_QUICK -> "Kể Nhanh (~10 phút)"
+        VAN_VO_STANDARD -> "Kể Chuyện Sâu (~20 phút)"
+        VAN_VO_DEEP -> "Phân Tích Chi Tiết (~30+ phút)"
+        BEDTIME_CALM -> "Kể Chuyện Đêm Khuya (~15 phút)"
+        else -> "Kể Chuyện Sâu"
     }
 
     fun targetWords(mode: String): Int = when (mode) {

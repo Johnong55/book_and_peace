@@ -66,7 +66,7 @@ data class DeepSummaryEntry(
             appendLine("4. CHI TIẾT ĐẮT GIÁ & TRÍCH DẪN KINH ĐIỂN:")
             appendLine(keyDetailsAndQuotes)
             appendLine()
-            appendLine("5. GÓC NHÌN CHIÊM NGHIỆM (CHẤT VĂN VỞ):")
+            appendLine("5. GÓC NHÌN PHÊ BÌNH & CHIÊM NGHIỆM:")
             appendLine(vanVoPerspective)
         }.trim()
     }

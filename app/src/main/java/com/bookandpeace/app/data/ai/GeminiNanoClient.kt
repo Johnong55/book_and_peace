@@ -68,10 +68,10 @@ $chunk
                 if (out.isNotBlank()) notes.add(out)
             }
 
-            onProgress("Gemini Nano đang dệt kịch bản kể chuyện phong cách Văn Vở...")
+            onProgress("Gemini Nano đang dệt kịch bản Kể Chuyện Sâu...")
             val combinedNotes = notes.joinToString("\n\n").take(3200)
             val finalPrompt = """
-Hãy viết kịch bản kể chuyện bằng tiếng Việt theo phong cách trầm ấm, hóm hỉnh, sâu sắc (giống kênh Văn Vở) cho cuốn sách "$bookTitle" của $author dựa trên ghi chép sau.
+Hãy viết kịch bản kể chuyện phân tích sâu bằng tiếng Việt theo phong cách trầm ấm, hóm hỉnh, giàu cảm xúc cho cuốn sách "$bookTitle" của $author dựa trên ghi chép sau.
 Chia rõ các phần bằng dòng: === PHẦN: <Tên hồi> | GIỌNG: <giọng đọc> ===
 
 $combinedNotes

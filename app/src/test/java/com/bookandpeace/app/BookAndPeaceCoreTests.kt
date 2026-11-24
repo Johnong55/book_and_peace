@@ -191,7 +191,7 @@ class BookAndPeaceCoreTests {
         assertEquals(syntheticKey, extracted)
 
         val prompt = VanVoPromptBuilder.buildSystemInstruction(StoryStyleMode.VAN_VO_STANDARD)
-        assertTrue(prompt.contains("Văn Vở"))
+        assertTrue(prompt.contains("Kể Chuyện Sâu"))
         assertTrue(prompt.contains("=== PHẦN:"))
     }
 

@@ -1,7 +1,7 @@
 # 📚 Book & Peace
 
 <p align="center">
-  <strong>Ứng dụng đọc sách Android thuần chuẩn Máy đọc sách (Kindle-style) & Sách nói AI kể chuyện phân tích sâu phong cách Văn Vở</strong>
+  <strong>Ứng dụng đọc sách Android thuần chuẩn Máy đọc sách (Kindle-style) & Sách nói AI kể chuyện phân tích sâu</strong>
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 
 ## ✨ Giới thiệu
 
-**Book & Peace** là dự án mã nguồn mở xây dựng một trình đọc sách tối giản, dịu mắt cho điện thoại Android, kết hợp với **Studio Kể Chuyện Sách Nói AI** theo phong cách phân tích sâu sắc, gần gũi và hóm hỉnh (cảm hứng từ kênh *Văn Vở*).
+**Book & Peace** là dự án mã nguồn mở xây dựng một trình đọc sách tối giản, dịu mắt cho điện thoại Android, kết hợp với **Studio Kể Chuyện Sâu (AI Audiobook)** theo phong cách kể chuyện phân tích sinh động, trầm ấm và hóm hỉnh.
 
 Thay vì dừng ở những đoạn tóm tắt khô khan vài dòng, Book & Peace tập trung vào hai trải nghiệm cốt lõi:
 1. **Đọc sách thật êm mắt & mượt mà như máy đọc sách:** Hỗ trợ đọc nguyên trang PDF có ảnh/tranh/biểu đồ gốc, EPUB có hình minh họa, lật trang ngang kiểu Kindle và 5 bảng màu chuẩn nhãn khoa giảm điều tiết mắt.
@@ -46,12 +46,12 @@ Thay vì dừng ở những đoạn tóm tắt khô khan vài dòng, Book & Peac
   * **Tải trực tiếp từ Link Google Drive / Google Docs / URL** (hỗ trợ stream file PDF lớn ra ổ đĩa, không tràn RAM).
   * **Mở trực tiếp từ hệ thống Android (`Mở bằng Book & Peace` / `Chia sẻ → Book & Peace`)** khi tải file từ trình duyệt hoặc Google Drive.
 
-### 🎧 Studio Kể Chuyện Văn Vở & Sách Nói Chạy Nền
+### 🎧 Studio Kể Chuyện Sâu & Sách Nói Chạy Nền
 * **Kho Sách Nói Phân Tích Sâu có sẵn (0 token Text AI):** 14 tập sách nói chi tiết 5–6 hồi (*Chí Phèo, Lão Hạc, Tắt đèn, Truyện Kiều, Mắt biếc, Cho tôi xin một vé đi tuổi thơ, Tôi thấy hoa vàng trên cỏ xanh, Sapiens, Nguồn gốc các loài, Thuyết tương đối, Sherlock Holmes, Gatsby Vĩ Đại, Tội ác và Hình phạt, Suối nguồn*) cùng 24 bản tóm tắt sâu bổ sung.
 * **3 chế độ AI 0 VNĐ:**
   1. **Google AI Studio Free API Key** (`gemini-3.8-flash`, chạy ngầm qua `WorkManager`, không cần thẻ tín dụng).
   2. **Gemini Nano On-Device** (`ML Kit GenAI Prompt API`, chạy offline trên máy Android 14+ có AICore).
-  3. **Liên kết App Gemini trên điện thoại** (đóng gói sẵn prompt Văn Vở → Copy/Dán kịch bản để thu âm).
+  3. **Liên kết App Gemini trên điện thoại** (đóng gói sẵn prompt Kể Chuyện Sâu → Copy/Dán kịch bản để thu âm).
 * **3 tầng TTS & Trình phát nền `Media3 / ExoPlayer`:**
   * **Gemini 3.8 Flash TTS (`v1beta`)** dùng `speechMetadata.style` (chỉ đọc sạch lời kể, giọng `Charon` trầm ấm).
   * **Android System TTS (`vi-VN`)** miễn phí 100%, chạy offline làm tầng dự phòng tự động.

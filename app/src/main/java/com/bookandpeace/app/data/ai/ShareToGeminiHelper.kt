@@ -45,7 +45,7 @@ object ShareToGeminiHelper {
 
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Kịch bản Văn Vở: $bookTitle")
+            putExtra(Intent.EXTRA_SUBJECT, "Kịch bản Kể Chuyện Sâu: $bookTitle")
             putExtra(Intent.EXTRA_TEXT, prompt)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (isGeminiAppInstalled(context)) {
@@ -62,7 +62,7 @@ object ShareToGeminiHelper {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, prompt)
                 },
-                "Gửi sang Gemini để viết kịch bản Văn Vở"
+                "Gửi sang Gemini để viết kịch bản Kể Chuyện Sâu"
             ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             context.startActivity(chooser)
             true

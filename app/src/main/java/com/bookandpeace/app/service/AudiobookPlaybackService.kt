@@ -169,7 +169,7 @@ class AudioPlayerController(private val appContext: Context) {
                     .setMediaMetadata(
                         MediaMetadata.Builder()
                             .setTitle("${seg.sectionTitle} — $bookTitle")
-                            .setArtist("Book & Peace • Kể chuyện Văn Vở")
+                            .setArtist("Book & Peace • Sách nói Kể Chuyện Sâu")
                             .setAlbumTitle(scriptTitle)
                             .build()
                     )

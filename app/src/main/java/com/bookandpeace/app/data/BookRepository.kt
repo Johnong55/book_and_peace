@@ -283,13 +283,13 @@ class BookRepository(
         val scriptId = storyScriptDao.insertScript(
             StoryScriptEntity(
                 bookId = bookId,
-                title = "Văn Vở: $bookTitle",
+                title = "Kể chuyện sâu: $bookTitle",
                 styleMode = styleMode,
                 aiProvider = aiProvider,
                 ttsEngine = ttsEngine,
                 status = ScriptStatus.GENERATING_SCRIPT,
                 statusMessage = if (useDeepSummary) {
-                    "Đang viết kịch bản Văn Vở (chế độ tiết kiệm token)..."
+                    "Đang viết kịch bản Kể Chuyện Sâu (chế độ tiết kiệm token)..."
                 } else {
                     "Đang xếp hàng chạy ngầm..."
                 }
@@ -349,7 +349,7 @@ class BookRepository(
                 com.bookandpeace.app.data.parser.ParsedChapter("2. Nhân vật / Khái niệm cốt lõi", entry.charactersOrCoreConcepts),
                 com.bookandpeace.app.data.parser.ParsedChapter("3. Tóm tắt sâu & Phân tích chi tiết", entry.deepAnalysis),
                 com.bookandpeace.app.data.parser.ParsedChapter("4. Chi tiết đắt giá & Trích dẫn", entry.keyDetailsAndQuotes),
-                com.bookandpeace.app.data.parser.ParsedChapter("5. Góc nhìn chiêm nghiệm Văn Vở", entry.vanVoPerspective)
+                com.bookandpeace.app.data.parser.ParsedChapter("5. Góc nhìn phê bình & chiêm nghiệm", entry.vanVoPerspective)
             )
         }
         saveParsedBook(
@@ -391,7 +391,7 @@ class BookRepository(
         val scriptId = storyScriptDao.insertScript(
             StoryScriptEntity(
                 bookId = bookId,
-                title = "Văn Vở (Từ App Gemini): $bookTitle",
+                title = "Kể chuyện sâu (Từ App Gemini): $bookTitle",
                 styleMode = styleMode,
                 aiProvider = "GEMINI_APP_SHARE",
                 ttsEngine = ttsEngine,

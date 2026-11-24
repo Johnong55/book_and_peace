@@ -229,7 +229,7 @@ class StoryGenerationWorker(
                 status = ScriptStatus.READY,
                 message = "Sẵn sàng nghe (${savedSegments.size} đoạn • $lastEngineUsed)"
             )
-            postCompletionNotification(book.title, "Sách nói Văn Vở đã hoàn tất (${savedSegments.size} đoạn)!")
+            postCompletionNotification(book.title, "Sách nói Kể Chuyện Sâu đã hoàn tất (${savedSegments.size} đoạn)!")
             Result.success()
         } catch (ex: Exception) {
             val err = ex.localizedMessage ?: "Có lỗi xảy ra khi tạo sách nói"
@@ -250,7 +250,7 @@ class StoryGenerationWorker(
             "Book & Peace — AI Tạo Sách Nói",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Hiển thị tiến độ tạo kịch bản Văn Vở và thu âm sách nói chạy ngầm"
+            description = "Hiển thị tiến độ tạo kịch bản Kể Chuyện Sâu và thu âm sách nói chạy ngầm"
         }
         manager.createNotificationChannel(channel)
     }

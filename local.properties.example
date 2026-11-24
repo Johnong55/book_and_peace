@@ -1,0 +1,6 @@
+# Copy file này thành local.properties và điền đường dẫn Android SDK + API Key miễn phí của bạn
+# KHÔNG commit file local.properties lên Git!
+sdk.dir=C\:\\Users\\YOUR_USER\\AppData\\Local\\Android\\Sdk
+
+# Lấy Google AI Studio Free API Key (0 VNĐ) tại: https://aistudio.google.com/apikey
+GEMINI_API_KEY=

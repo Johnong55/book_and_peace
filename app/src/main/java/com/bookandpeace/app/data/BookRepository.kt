@@ -327,20 +327,40 @@ class BookRepository(
 
     suspend fun saveDeepSummaryAsBook(entry: DeepSummaryEntry): Long = withContext(Dispatchers.IO) {
         val existing = bookDao.findBySource(BookSourceType.BUILTIN, "deep_${entry.id}")
-        if (existing != null) return@withContext existing.id
+        if (existing != null) {
+            // Upgrade old short 5-chapter entry if a richer full narration is now bundled
+            if (entry.hasFullNarration && existing.wordCount < 1100) {
+                deleteBook(existing.id)
+            } else {
+                return@withContext existing.id
+            }
+        }
 
-        val chapters = listOf(
-            com.bookandpeace.app.data.parser.ParsedChapter("1. Bối cảnh & Tầm vóc", entry.context),
-            com.bookandpeace.app.data.parser.ParsedChapter("2. Nhân vật / Khái niệm cốt lõi", entry.charactersOrCoreConcepts),
-            com.bookandpeace.app.data.parser.ParsedChapter("3. Tóm tắt sâu & Phân tích chi tiết", entry.deepAnalysis),
-            com.bookandpeace.app.data.parser.ParsedChapter("4. Chi tiết đắt giá & Trích dẫn", entry.keyDetailsAndQuotes),
-            com.bookandpeace.app.data.parser.ParsedChapter("5. Góc nhìn chiêm nghiệm Văn Vở", entry.vanVoPerspective)
-        )
+        val chapters = if (entry.hasFullNarration) {
+            entry.narrationParts.mapIndexed { idx, part ->
+                com.bookandpeace.app.data.parser.ParsedChapter(
+                    title = "Hồi ${idx + 1}: ${part.title}",
+                    content = part.content
+                )
+            }
+        } else {
+            listOf(
+                com.bookandpeace.app.data.parser.ParsedChapter("1. Bối cảnh & Tầm vóc", entry.context),
+                com.bookandpeace.app.data.parser.ParsedChapter("2. Nhân vật / Khái niệm cốt lõi", entry.charactersOrCoreConcepts),
+                com.bookandpeace.app.data.parser.ParsedChapter("3. Tóm tắt sâu & Phân tích chi tiết", entry.deepAnalysis),
+                com.bookandpeace.app.data.parser.ParsedChapter("4. Chi tiết đắt giá & Trích dẫn", entry.keyDetailsAndQuotes),
+                com.bookandpeace.app.data.parser.ParsedChapter("5. Góc nhìn chiêm nghiệm Văn Vở", entry.vanVoPerspective)
+            )
+        }
         saveParsedBook(
             parsed = ParsedBook(
                 title = entry.titleVi,
                 author = entry.author,
-                description = "Bản Tóm Tắt Sâu có sẵn (tiết kiệm 95% token AI). ${entry.context}",
+                description = if (entry.hasFullNarration) {
+                    "Bản Sách nói Phân tích Đầy đủ (~${entry.estimatedMinutes} phút nghe). ${entry.context}"
+                } else {
+                    "Bản Tóm Tắt Sâu có sẵn. ${entry.context}"
+                },
                 language = "vi",
                 chapters = chapters
             ),

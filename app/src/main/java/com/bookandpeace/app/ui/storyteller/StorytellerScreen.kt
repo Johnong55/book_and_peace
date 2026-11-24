@@ -161,12 +161,20 @@ fun StorytellerScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "⚡ Đã có Bản Tóm Tắt Sâu có sẵn",
+                                        if (matchedDeepSummary.hasFullNarration) {
+                                            "🎧 Sách nói Phân tích Đầy đủ (~${matchedDeepSummary.estimatedMinutes} phút)"
+                                        } else {
+                                            "⚡ Đã có Bản Tóm Tắt Sâu có sẵn"
+                                        },
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold
                                     )
                                     Text(
-                                        "Dùng nguồn tóm tắt sâu giúp tiết kiệm ~95% token API Gemini.",
+                                        if (matchedDeepSummary.hasFullNarration) {
+                                            "Bản kể chi tiết nhiều hồi kèm bình luận sâu sắc — thu âm nghe ngay không tốn token Text AI."
+                                        } else {
+                                            "Dùng nguồn tóm tắt sâu giúp tiết kiệm ~95% token API Gemini."
+                                        },
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }

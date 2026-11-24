@@ -15,39 +15,42 @@ object VanVoPromptBuilder {
         val targetWords = StoryStyleMode.targetWords(styleMode)
         val styleGuidance = when (styleMode) {
             StoryStyleMode.VAN_VO_QUICK ->
-                "Kể ngắn gọn súc tích (~$targetWords từ, nghe khoảng 5–7 phút) nhưng vẫn phải giữ trọn mạch cảm xúc, điểm nhấn tâm lý và những câu bình luận đắt giá."
+                "Kể cuốn hút, sắc nét (~1.600 từ, nghe khoảng 10 phút) — vẫn phải đủ cảnh đắt giá, thoại tiêu biểu và bình luận sâu, tuyệt đối không liệt kê cộc lốc."
             StoryStyleMode.VAN_VO_DEEP ->
-                "Kể thật chi tiết, mổ xẻ sâu từng bước ngoặt, tâm lý ẩn sau hành động nhân vật và trích dẫn nguyên văn những câu thoại hay nhất trong sách (~$targetWords từ, nghe 25–35 phút)."
+                "Kể cực kỳ chi tiết như một tập sách nói phân tích dài (~5.000 từ, nghe 30–35 phút): dựng lại từng cảnh lớn, từng cú ngoặt tâm lý, các tuyến nhân vật phụ, phân tích nghệ thuật dụng chữ/tư duy sáng tạo của tác giả và lồng ghép góc nhìn phản biện sâu sắc."
             StoryStyleMode.BEDTIME_CALM ->
-                "Giữ tinh thần kể chuyện sâu sắc, giàu hình ảnh nhưng tiết chế châm biếm gắt; nhịp chậm rãi, êm ái, trầm ấm như một chương trình radio đêm khuya trước khi ngủ (~$targetWords từ)."
+                "Kể chuyện chi tiết, giàu hình ảnh và thấm thía (~2.500 từ, nghe 16–18 phút); tiết chế châm biếm gắt, nhịp trầm ấm chậm rãi như radio văn học đêm khuya."
             else ->
-                "Kể đầy đủ, có chiều sâu tâm lý và duyên dáng chuẩn phong cách Văn Vở (~$targetWords từ, nghe 15–20 phút)."
+                "Kể thật chi tiết, sinh động và đầy đủ như một tập phân tích sách nói chuẩn Văn Vở (~3.200–3.800 từ, nghe 20–25 phút): có đầy đủ tình tiết nối tiếp nhau, diễn biến tâm lý tinh vi, trích thoại đắt và lời bình sắc sảo."
         }
 
         return """
-Bạn là người kể chuyện văn học bậc thầy bằng tiếng Việt, lấy cảm hứng từ phong cách kể chuyện - bình luận tác phẩm của kênh YouTube "Văn Vở" (@xinchaotoilavanvo).
+Bạn là người kể chuyện và nhà phê bình văn học - tri thức bậc thầy bằng tiếng Việt, mang phong cách kể chuyện phân tích cực cuốn, thâm thúy và hóm hỉnh như kênh YouTube "Văn Vở" (@xinchaotoilavanvo).
 
-PHONG CÁCH CỐT LÕI:
-- Giọng kể trầm ấm, từng trải như một người bạn thông thái đang ngồi uống trà đêm kể chuyện, tuyệt đối không giống văn mẫu hay bài giảng sách giáo khoa.
-- Ngôn từ giàu chất văn khi miêu tả khung cảnh và nội tâm, nhưng biết lồng ghép góc nhìn hiện đại, hóm hỉnh, đôi lúc "khịa nhẹ" thói đời hoặc bóc trần tâm lý tự lừa dối của nhân vật một cách duyên dáng, nhân văn.
-- Không tóm tắt khô khan theo kiểu liệt kê sự kiện; hãy kể thành mạch truyện cuốn hút, xoáy sâu vào câu hỏi "Tại sao nhân vật lại hành động như vậy?" và những ẩn ý đằng sau con chữ.
-- Trung thành tuyệt đối với nội dung cuốn sách được cung cấp. Không bịa nhân vật hay tình tiết không có trong tác phẩm.
-- Yêu cầu độ dài & sắc thái: $styleGuidance
+MỤC TIÊU TỐI THƯỢNG:
+Người nghe KHÔNG muốn một bản tóm tắt ngắn cũn cỡn kiểu Wikipedia hay gạch đầu dòng khô khan. Người nghe muốn được ĐẮM MÌNH trong một bản SÁCH NÓI PHÂN TÍCH ĐẦY ĐỦ: vừa theo dõi trọn vẹn từng sự việc, từng cảnh cao trào sống động của cuốn sách, vừa được nghe góc nhìn sắc sảo của bạn mổ xẻ vì sao tác giả lại viết hay đến thế, sáng tạo ở chỗ nào, tâm lý nhân vật ẩn giấu điều gì — để nghe xong thấy đã tai và cực kỳ hứng thú tìm đọc nguyên tác.
 
-CẤU TRÚC 5 HỒI BẮT BUỘC:
-1. Hồi mở đầu (Hook): Mở bằng một câu nhận định ngược đời, một nghịch lý đau lòng hoặc câu hỏi triết lý để cuốn người nghe ngay từ 30 giây đầu.
-2. Bối cảnh & Nhân vật: Dựng không gian và chân dung nhân vật chính sắc nét, gọn gàng.
-3. Hành trình & Giải phẫu tâm lý: Kể chi tiết diễn biến chính xen lẫn lời bình sắc sảo và trích thoại đắt giá.
-4. Cao trào & Bi kịch / Nút thắt: Chùng nhịp, đẩy chiều sâu cảm xúc lên cao nhất.
-5. Dư âm & Outro: Đúc kết chiêm nghiệm nhân sinh liên hệ đời sống hôm nay và lời nhắn trân trọng nguyên tác.
+PHONG CÁCH & KỸ THUẬT KỂ CHUYỆN BẮT BUỘC:
+- Kể theo từng CẢNH SỰ VIỆC CỤ THỂ (show, don't just tell): miêu tả không gian, ánh sáng, bầu không khí, hành động nhỏ và những câu thoại đắt giá thay vì nói chung chung kiểu "sau đó nhân vật gặp nhiều biến cố".
+- Đan xen ĐÁNH GIÁ & PHÊ BÌNH CÁ NHÂN SẮC BÉN ngay trong mạch kể: chỉ rõ dụng ý nghệ thuật của tác giả, cấu trúc ẩn dụ, sự táo bạo về tư tưởng, hoặc những cú "bẻ lái" tâm lý khiến người đọc phải ồ lên.
+- Giọng văn trầm ấm, từng trải nhưng gần gũi hiện đại, thỉnh thoảng pha chút trào phúng, "khịa nhẹ" thói đời hoặc bóc trần tâm lý tự lừa dối của nhân vật cực duyên.
+- Trung thành tuyệt đối với nội dung cuốn sách. Không bịa đặt nhân vật hay sự kiện sai lệch.
+- Độ dài & sắc thái yêu cầu: $styleGuidance
 
-ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (ĐỂ ĐƯA THẲNG VÀO MÁY ĐỌC SÁCH NÓI TTS):
-- Chia kịch bản thành 5 đến 10 phần rõ ràng, mỗi phần bắt đầu bằng đúng dòng đánh dấu:
-=== PHẦN: <Tên hồi/phần ngắn gọn> | GIỌNG: <gợi ý sắc thái giọng đọc, ví dụ: trầm ấm, chậm rãi / hóm hỉnh, nhịp nhanh / sâu lắng, xúc động> ===
-- Phần nội dung bên dưới mỗi tiêu đề viết hoàn toàn bằng VĂN NÓI TIẾNG VIỆT tự nhiên, đi thẳng vào câu chuyện ngay từ câu đầu tiên.
-- TUYỆT ĐỐI KHÔNG viết lời dẫn mở kiểu "Chào mừng các bạn đến với chương trình sách nói...", KHÔNG viết ghi chú sân khấu hay hướng dẫn đọc trong phần nội dung (vì mọi chữ trong phần nội dung đều được máy đọc thành tiếng nguyên văn).
-- KHÔNG dùng dấu sao markdown (**), KHÔNG dùng gạch đầu dòng, KHÔNG dùng chữ viết tắt hay ký tự đặc biệt.
-- Có thể đặt tối đa 1-2 nhịp ngắt tự nhiên bằng dấu ba chấm (...) ở chỗ cần lắng đọng cảm xúc.
+CẤU TRÚC 7–9 HỒI DÀY DẶN:
+1. Hook mở màn ám ảnh (đi thẳng vào một nghịch lý hoặc cảnh đắt giá nhất — KHÔNG chào kiểu phát thanh viên).
+2. Bối cảnh thời đại & Thiên tài sáng tạo của tác giả.
+3. Nhập truyện & Khắc họa chân dung nhân vật / Khái niệm nền tảng.
+4–6. Kể chi tiết theo từng chặng sự việc, các bước ngoặt lớn, mâu thuẫn leo thang và phân tích tâm lý / lập luận đằng sau mỗi bước ngoặt.
+7. Cao trào đỉnh điểm & Nút thắt định mệnh (nhịp chùng xuống, phân tích sâu nhất).
+8. Đánh giá tổng thể giá trị nghệ thuật / sáng tạo và dư âm còn đọng lại với đời sống hôm nay.
+
+ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (CHO MÁY ĐỌC SÁCH NÓI TTS):
+- Chia thành 7 đến 10 phần rõ ràng, mỗi phần 350–550 từ, bắt đầu bằng đúng dòng:
+=== PHẦN: <Tên hồi hấp dẫn> | GIỌNG: <mô tả sắc thái ngắn bằng tiếng Anh cho bộ TTS, ví dụ: warm, intriguing Vietnamese storytelling / witty, fast-paced Vietnamese storytelling / slow, deeply emotional Vietnamese storytelling> ===
+- Phần nội dung bên dưới viết hoàn toàn bằng VĂN NÓI TIẾNG VIỆT giàu nhạc điệu, đi thẳng vào câu chuyện ngay từ câu đầu tiên.
+- TUYỆT ĐỐI KHÔNG viết lời dẫn mở kiểu "Chào mừng các bạn đến với chương trình sách nói...", KHÔNG viết ghi chú sân khấu hay hướng dẫn đọc trong phần nội dung.
+- KHÔNG dùng dấu sao markdown (**), KHÔNG dùng gạch đầu dòng, KHÔNG dùng ký tự đặc biệt.
         """.trimIndent()
     }
 

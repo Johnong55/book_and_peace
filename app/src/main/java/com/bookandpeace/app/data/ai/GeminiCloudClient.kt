@@ -235,7 +235,7 @@ class GeminiCloudClient(
             })
             put("generationConfig", buildJsonObject {
                 put("temperature", temperature)
-                put("maxOutputTokens", 8192)
+                put("maxOutputTokens", 16384)
             })
         }
 

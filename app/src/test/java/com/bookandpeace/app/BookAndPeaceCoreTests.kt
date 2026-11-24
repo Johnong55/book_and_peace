@@ -246,4 +246,29 @@ class BookAndPeaceCoreTests {
         val folder = UrlBookDownloader.resolveUrl("https://drive.google.com/drive/folders/1FolderIdHere")
         assertTrue(folder is ResolvedDownloadUrl.FolderOrWebPage)
     }
+
+    @Test
+    fun fullNarrationStoryAssets_allValidJsonWithRichMultiChapterScripts() {
+        val storiesDir = File("src/main/assets/stories")
+        assertTrue("stories directory must exist", storiesDir.exists() && storiesDir.isDirectory)
+        val files = storiesDir.listFiles { f -> f.extension == "json" }?.sortedBy { it.name }.orEmpty()
+        assertEquals(4, files.size)
+
+        val jsonParser = Json { ignoreUnknownKeys = true }
+        var totalFullEpisodes = 0
+        for (file in files) {
+            val list = jsonParser.decodeFromString<List<DeepSummaryEntry>>(file.readText(Charsets.UTF_8))
+            assertTrue("${file.name} must not be empty", list.isNotEmpty())
+            for (entry in list) {
+                assertTrue("${entry.id} must have full narration parts", entry.hasFullNarration)
+                assertTrue("${entry.id} should have at least 4 chapters", entry.narrationParts.size >= 4)
+                val segments = ScriptSegmentParser.parseToSegments(entry.toZeroTokenAudioScript())
+                assertTrue("${entry.id} must parse cleanly into speech segments", segments.size >= 4)
+                val totalWords = entry.narrationParts.sumOf { it.content.split(Regex("\\s+")).size }
+                assertTrue("${entry.id} should be deeply detailed (>= 850 words), was $totalWords", totalWords >= 850)
+                totalFullEpisodes++
+            }
+        }
+        assertEquals(14, totalFullEpisodes)
+    }
 }

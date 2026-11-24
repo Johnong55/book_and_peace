@@ -397,7 +397,11 @@ private fun MinimalDeepSummaryRow(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = "${entry.author} • ${entry.category}",
+                text = if (entry.hasFullNarration) {
+                    "${entry.author} • 🎧 Sách nói đầy đủ (~${entry.estimatedMinutes}p)"
+                } else {
+                    "${entry.author} • ${entry.category}"
+                },
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )

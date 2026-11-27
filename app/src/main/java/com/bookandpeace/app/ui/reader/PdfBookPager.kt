@@ -6,7 +6,6 @@ import android.graphics.Color as AndroidColor
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -28,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +40,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.bookandpeace.app.data.local.PageTurnStyle
 import com.bookandpeace.app.data.local.ReaderThemeMode
 import com.bookandpeace.app.ui.theme.ReaderPalette
 import kotlinx.coroutines.Dispatchers
@@ -100,11 +99,10 @@ internal fun rememberPdfRenderEngine(pdfFilePath: String): PdfRenderEngine? {
 }
 
 /**
- * Full-screen native PDF book pager with instant zero-delay Left/Right tap-to-turn zones:
- * - Left 35%: Turn to previous page
- * - Center 30%: Toggle floating reader menu
- * - Right 35%: Turn to next page
- * Supports smooth swipe, eye-care paper tint / soft dark inversion, and pan when zoomed.
+ * Full-screen native PDF book pager with:
+ * - Instant zero-delay Left/Right tap-to-turn zones (35% left / 30% center / 35% right)
+ * - Realistic 3D physical book page-turning animation + dynamic shadow & spine lighting
+ * - Interactive tactile paper-lift & paper-settle haptics
  */
 @Composable
 internal fun PdfBookPagerCanvas(
@@ -112,7 +110,9 @@ internal fun PdfBookPagerCanvas(
     pdfFilePath: String,
     pagerState: PagerState,
     themeMode: ReaderThemeMode,
+    pageTurnStyle: PageTurnStyle,
     palette: ReaderPalette,
+    haptics: BookHaptics,
     zoomScale: Float,
     onTapLeft: () -> Unit,
     onTapCenter: () -> Unit,
@@ -130,7 +130,7 @@ internal fun PdfBookPagerCanvas(
     if (engine == null || engine.pageCount <= 0) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                "Không mở được file PDF gốc. Hãy chuyển sang chế độ Chữ ở thanh trên.",
+                "Không mở được file PDF gốc. Hãy chuyển sang chế độ Bản chữ ở thanh trên.",
                 color = palette.secondaryText,
                 modifier = Modifier.padding(24.dp)
             )
@@ -140,7 +140,10 @@ internal fun PdfBookPagerCanvas(
 
     val totalPages = engine.pageCount
 
-    // Pre-fetch neighbor pages in background so swiping & tapping feel instantaneous
+    // Interactive drag lift & settle haptics
+    ObserveBookPagerHaptics(pagerState = pagerState, haptics = haptics)
+
+    // Pre-fetch neighbor pages in background so swiping & 3D page turns are instantaneous
     LaunchedEffect(pagerState.currentPage, totalPages) {
         val current = pagerState.currentPage
         onPageChanged(current, totalPages)
@@ -193,9 +196,15 @@ internal fun PdfBookPagerCanvas(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .bookPageFlipEffect(
+                        pagerState = pagerState,
+                        pageIndex = pageIdx,
+                        style = if (isZoomed) PageTurnStyle.SMOOTH_SLIDE else pageTurnStyle,
+                        palette = palette,
+                        isDark = themeMode.isDark
+                    )
                     .background(palette.background)
                     .pointerInput(pageIdx, totalPages, isZoomed) {
-                        // Single-tap ONLY (no onDoubleTap) => 0ms instant page turn!
                         detectTapGestures { offset ->
                             val width = size.width.toFloat().coerceAtLeast(1f)
                             when {
@@ -248,16 +257,5 @@ internal fun PdfBookPagerCanvas(
                 }
             }
         }
-    }
-}
-
-internal suspend fun PagerState.flipToPageSmooth(targetPage: Int) {
-    if (pageCount <= 0) return
-    val clamped = targetPage.coerceIn(0, pageCount - 1)
-    if (clamped != currentPage) {
-        animateScrollToPage(
-            page = clamped,
-            animationSpec = tween(durationMillis = 200)
-        )
     }
 }

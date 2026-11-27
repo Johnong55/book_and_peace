@@ -68,6 +68,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -97,6 +98,7 @@ import com.bookandpeace.app.data.AppContainer
 import com.bookandpeace.app.data.local.AppSettings
 import com.bookandpeace.app.data.local.BookSourceType
 import com.bookandpeace.app.data.local.ChapterEntity
+import com.bookandpeace.app.data.local.PageTurnStyle
 import com.bookandpeace.app.data.local.ReaderThemeMode
 import com.bookandpeace.app.data.parser.EpubParser
 import com.bookandpeace.app.ui.theme.ReaderPalette
@@ -283,6 +285,7 @@ fun ReaderScreen(
     }
 
     val palette = readerPaletteFor(settings.readerTheme)
+    val haptics = rememberBookHaptics(enabled = settings.readerHapticsEnabled)
 
     // Native PDF engine & pager state lifted here so bottom slider & tap zones stay perfectly in sync
     val pdfEngine = if (useVisualPdfMode && hasNativePdf) {
@@ -346,18 +349,22 @@ fun ReaderScreen(
 
     fun goToPrevChapter(openAtLastPage: Boolean) {
         if (currentChapterIndex > 0) {
+            haptics.onChapterBoundary()
             pendingPageTarget = if (openAtLastPage) -1 else 0
             currentChapterIndex--
         } else {
+            haptics.onBookBoundary()
             scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên của sách") }
         }
     }
 
     fun goToNextChapter() {
         if (currentChapterIndex < chapterHeaders.lastIndex) {
+            haptics.onChapterBoundary()
             pendingPageTarget = 0
             currentChapterIndex++
         } else {
+            haptics.onBookBoundary()
             scope.launch { snackbarHostState.showSnackbar("Bạn đã đọc đến trang cuối của sách") }
         }
     }
@@ -408,27 +415,44 @@ fun ReaderScreen(
                 pdfFilePath = book!!.localFilePath!!,
                 pagerState = pdfPagerState,
                 themeMode = settings.readerTheme,
+                pageTurnStyle = settings.readerPageTurnStyle,
                 palette = palette,
+                haptics = haptics,
                 zoomScale = pdfZoomScale,
                 onTapLeft = {
                     showTapGuide = false
                     if (barsVisible) barsVisible = false
                     if (pdfPagerState.currentPage > 0) {
-                        scope.launch { pdfPagerState.flipToPageSmooth(pdfPagerState.currentPage - 1) }
+                        haptics.onPageLift()
+                        scope.launch {
+                            pdfPagerState.flipToPageRealistic(
+                                targetPage = pdfPagerState.currentPage - 1,
+                                style = settings.readerPageTurnStyle
+                            )
+                        }
                     } else {
+                        haptics.onBookBoundary()
                         scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên") }
                     }
                 },
                 onTapCenter = {
                     showTapGuide = false
+                    haptics.onUiTick()
                     barsVisible = !barsVisible
                 },
                 onTapRight = {
                     showTapGuide = false
                     if (barsVisible) barsVisible = false
                     if (pdfPagerState.currentPage < pdfPagerState.pageCount - 1) {
-                        scope.launch { pdfPagerState.flipToPageSmooth(pdfPagerState.currentPage + 1) }
+                        haptics.onPageLift()
+                        scope.launch {
+                            pdfPagerState.flipToPageRealistic(
+                                targetPage = pdfPagerState.currentPage + 1,
+                                style = settings.readerPageTurnStyle
+                            )
+                        }
                     } else {
+                        haptics.onBookBoundary()
                         scope.launch { snackbarHostState.showSnackbar("Bạn đã đến trang cuối") }
                     }
                 },
@@ -462,6 +486,7 @@ fun ReaderScreen(
                     pendingScrubPage = pendingScrubPage,
                     settings = settings,
                     palette = palette,
+                    haptics = haptics,
                     onPageResolved = { resolvedPage ->
                         textCurrentPage = resolvedPage
                         textTotalPages = pages.size
@@ -473,20 +498,33 @@ fun ReaderScreen(
                         showTapGuide = false
                         if (barsVisible) barsVisible = false
                         if (pagerState.currentPage > 0) {
-                            scope.launch { pagerState.flipToPageSmooth(pagerState.currentPage - 1) }
+                            haptics.onPageLift()
+                            scope.launch {
+                                pagerState.flipToPageRealistic(
+                                    targetPage = pagerState.currentPage - 1,
+                                    style = settings.readerPageTurnStyle
+                                )
+                            }
                         } else {
                             goToPrevChapter(openAtLastPage = true)
                         }
                     },
                     onTapCenter = {
                         showTapGuide = false
+                        haptics.onUiTick()
                         barsVisible = !barsVisible
                     },
                     onTapRight = { pagerState ->
                         showTapGuide = false
                         if (barsVisible) barsVisible = false
                         if (pagerState.currentPage < pages.lastIndex) {
-                            scope.launch { pagerState.flipToPageSmooth(pagerState.currentPage + 1) }
+                            haptics.onPageLift()
+                            scope.launch {
+                                pagerState.flipToPageRealistic(
+                                    targetPage = pagerState.currentPage + 1,
+                                    style = settings.readerPageTurnStyle
+                                )
+                            }
                         } else {
                             goToNextChapter()
                         }
@@ -501,14 +539,17 @@ fun ReaderScreen(
                     onTapLeft = {
                         showTapGuide = false
                         if (barsVisible) barsVisible = false
+                        haptics.onPageLift()
                     },
                     onTapCenter = {
                         showTapGuide = false
+                        haptics.onUiTick()
                         barsVisible = !barsVisible
                     },
                     onTapRight = {
                         showTapGuide = false
                         if (barsVisible) barsVisible = false
+                        haptics.onPageLift()
                     },
                     onBoundaryPrevChapter = { goToPrevChapter(openAtLastPage = false) },
                     onBoundaryNextChapter = { goToNextChapter() }
@@ -892,6 +933,7 @@ fun ReaderScreen(
                             label = if (settings.readerTheme.isDark) "Ban ngày" else "Ban đêm",
                             tint = palette.text,
                             onClick = {
+                                haptics.onUiTick()
                                 val nextTheme = if (settings.readerTheme.isDark) {
                                     ReaderThemeMode.SEPIA
                                 } else {
@@ -1014,8 +1056,59 @@ fun ReaderScreen(
                 // 1. Paper Color Swatches
                 EyeCareColorSwatchRow(
                     selected = settings.readerTheme,
-                    onSelect = { mode -> scope.launch { container.userPreferences.setReaderTheme(mode) } }
+                    onSelect = { mode ->
+                        haptics.onUiTick()
+                        scope.launch { container.userPreferences.setReaderTheme(mode) }
+                    }
                 )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                // Page-turn animation & Tactile Haptics (available for both Text & PDF!)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Hiệu ứng lật trang sách", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PageTurnStyle.entries.forEach { style ->
+                            FilterChip(
+                                selected = settings.readerPageTurnStyle == style,
+                                onClick = {
+                                    haptics.onPageSettle()
+                                    scope.launch { container.userPreferences.setReaderPageTurnStyle(style) }
+                                },
+                                label = {
+                                    Text(
+                                        if (style == PageTurnStyle.REALISTIC_BOOK) "Lật giấy 3D (Sách thật)"
+                                        else "Trượt êm"
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Rung xúc giác lật giấy (Haptic)", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Cảm giác rung nhẹ đầu ngón tay khi nâng & thả trang giấy",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.readerHapticsEnabled,
+                            onCheckedChange = { enabled ->
+                                scope.launch { container.userPreferences.setReaderHapticsEnabled(enabled) }
+                                if (enabled) {
+                                    haptics.enabled = true
+                                    haptics.onPageSettle()
+                                }
+                            }
+                        )
+                    }
+                }
 
                 if (!useVisualPdfMode) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
@@ -1033,6 +1126,7 @@ fun ReaderScreen(
                         ) {
                             OutlinedButton(
                                 onClick = {
+                                    haptics.onUiTick()
                                     val next = (settings.readerFontSizeSp - 1.5f).coerceAtLeast(14f)
                                     scope.launch {
                                         container.userPreferences.setReaderTypography(
@@ -1052,6 +1146,7 @@ fun ReaderScreen(
                             )
                             OutlinedButton(
                                 onClick = {
+                                    haptics.onUiTick()
                                     val next = (settings.readerFontSizeSp + 1.5f).coerceAtMost(27f)
                                     scope.launch {
                                         container.userPreferences.setReaderTypography(
@@ -1219,6 +1314,7 @@ private fun PaginatedBookCanvas(
     pendingScrubPage: Int?,
     settings: AppSettings,
     palette: ReaderPalette,
+    haptics: BookHaptics,
     onPageResolved: (Int) -> Unit,
     onTapLeft: (PagerState) -> Unit,
     onTapCenter: () -> Unit,
@@ -1237,6 +1333,9 @@ private fun PaginatedBookCanvas(
         initialPage = initialIdx,
         pageCount = { pages.size.coerceAtLeast(1) }
     )
+
+    // Interactive tactile lift & settle haptics for both swiping and tapping
+    ObserveBookPagerHaptics(pagerState = pagerState, haptics = haptics)
 
     LaunchedEffect(chapterId) {
         val target = if (pendingPageTarget < 0) {
@@ -1276,6 +1375,14 @@ private fun PaginatedBookCanvas(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .bookPageFlipEffect(
+                        pagerState = pagerState,
+                        pageIndex = pageIndex,
+                        style = settings.readerPageTurnStyle,
+                        palette = palette,
+                        isDark = settings.readerTheme.isDark
+                    )
+                    .background(palette.background)
                     .pointerInput(chapterId, pageIndex, pages.size) {
                         detectTapGestures { offset ->
                             val width = size.width.toFloat().coerceAtLeast(1f)

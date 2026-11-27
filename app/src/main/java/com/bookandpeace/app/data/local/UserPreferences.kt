@@ -27,6 +27,11 @@ enum class ReaderThemeMode(
     MIDNIGHT_NIGHT("Đêm Trầm", "Đọc phòng tối trước khi ngủ", true)
 }
 
+enum class PageTurnStyle(val label: String) {
+    REALISTIC_BOOK("Lật giấy 3D"),
+    SMOOTH_SLIDE("Trượt êm")
+}
+
 data class AppSettings(
     val geminiApiKey: String = BuildConfig.DEFAULT_GEMINI_API_KEY,
     val geminiTextModel: String = "gemini-3.8-flash",
@@ -43,6 +48,8 @@ data class AppSettings(
     val readerHorizontalMarginDp: Float = 24f,
     val readerUseSerif: Boolean = true,
     val readerPaginatedMode: Boolean = true,
+    val readerPageTurnStyle: PageTurnStyle = PageTurnStyle.REALISTIC_BOOK,
+    val readerHapticsEnabled: Boolean = true,
     val blueLightWarmth: Float = 0.08f,
     val screenDimmer: Float = 0f,
     val eyeRestReminderEnabled: Boolean = true,
@@ -70,6 +77,8 @@ class UserPreferences(private val context: Context) {
         val READER_MARGIN_DP = floatPreferencesKey("reader_margin_dp")
         val READER_FONT_STYLE = stringPreferencesKey("reader_font_style")
         val READER_PAGINATED_MODE = booleanPreferencesKey("reader_paginated_mode")
+        val READER_PAGE_TURN_STYLE = stringPreferencesKey("reader_page_turn_style")
+        val READER_HAPTICS_ENABLED = booleanPreferencesKey("reader_haptics_enabled")
         val BLUE_LIGHT_WARMTH = floatPreferencesKey("blue_light_warmth")
         val SCREEN_DIMMER = floatPreferencesKey("screen_dimmer")
         val EYE_REST_REMINDER = booleanPreferencesKey("eye_rest_reminder")
@@ -102,6 +111,10 @@ class UserPreferences(private val context: Context) {
             readerHorizontalMarginDp = prefs[Keys.READER_MARGIN_DP] ?: 24f,
             readerUseSerif = (prefs[Keys.READER_FONT_STYLE] ?: "SERIF") == "SERIF",
             readerPaginatedMode = prefs[Keys.READER_PAGINATED_MODE] ?: true,
+            readerPageTurnStyle = runCatching {
+                PageTurnStyle.valueOf(prefs[Keys.READER_PAGE_TURN_STYLE] ?: PageTurnStyle.REALISTIC_BOOK.name)
+            }.getOrDefault(PageTurnStyle.REALISTIC_BOOK),
+            readerHapticsEnabled = prefs[Keys.READER_HAPTICS_ENABLED] ?: true,
             blueLightWarmth = prefs[Keys.BLUE_LIGHT_WARMTH] ?: 0.08f,
             screenDimmer = prefs[Keys.SCREEN_DIMMER] ?: 0f,
             eyeRestReminderEnabled = prefs[Keys.EYE_REST_REMINDER] ?: true,
@@ -159,6 +172,14 @@ class UserPreferences(private val context: Context) {
 
     suspend fun setReaderPaginatedMode(paginated: Boolean) {
         context.dataStore.edit { it[Keys.READER_PAGINATED_MODE] = paginated }
+    }
+
+    suspend fun setReaderPageTurnStyle(style: PageTurnStyle) {
+        context.dataStore.edit { it[Keys.READER_PAGE_TURN_STYLE] = style.name }
+    }
+
+    suspend fun setReaderHapticsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.READER_HAPTICS_ENABLED] = enabled }
     }
 
     suspend fun setEyeComfortFilters(blueLightWarmth: Float, screenDimmer: Float) {

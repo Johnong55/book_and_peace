@@ -7,7 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,10 +35,13 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.bookandpeace.app.ui.theme.ReaderPalette
@@ -422,6 +427,22 @@ internal fun CornerPageCurlBook(
         )
     } else null
 
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val systemGestures = WindowInsets.systemGestures
+    val leftEdgeGuardPx by rememberUpdatedState(
+        maxOf(
+            systemGestures.getLeft(density, layoutDirection).toFloat(),
+            with(density) { 30.dp.toPx() }
+        )
+    )
+    val rightEdgeGuardPx by rememberUpdatedState(
+        maxOf(
+            systemGestures.getRight(density, layoutDirection).toFloat(),
+            with(density) { 30.dp.toPx() }
+        )
+    )
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -438,6 +459,11 @@ internal fun CornerPageCurlBook(
                             val w = size.width.toFloat().coerceAtLeast(1f)
                             val h = size.height.toFloat().coerceAtLeast(1f)
 
+                            // Reserve outer left & right bezels exclusively for Android System Back gesture
+                            if (downPos.x < leftEdgeGuardPx || downPos.x > (w - rightEdgeGuardPx)) {
+                                return@awaitEachGesture
+                            }
+
                             val velocityTracker = VelocityTracker()
                             velocityTracker.addPosition(down.uptimeMillis, downPos)
 
@@ -449,17 +475,29 @@ internal fun CornerPageCurlBook(
                             var rustleFired = false
                             var currentPointerPos = downPos
                             var lastUptimeMillis = downTime
+                            var wasCancelled = false
 
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id }
                                     ?: event.changes.firstOrNull()
-                                    ?: break
+                                    ?: run {
+                                        wasCancelled = true
+                                        break
+                                    }
 
                                 lastUptimeMillis = change.uptimeMillis
+                                if (change.isConsumed) {
+                                    wasCancelled = true
+                                    break
+                                }
                                 if (!change.pressed) {
-                                    currentPointerPos = change.position
-                                    velocityTracker.addPosition(change.uptimeMillis, currentPointerPos)
+                                    if (!change.changedToUp()) {
+                                        wasCancelled = true
+                                    } else {
+                                        currentPointerPos = change.position
+                                        velocityTracker.addPosition(change.uptimeMillis, currentPointerPos)
+                                    }
                                     break
                                 }
 
@@ -532,6 +570,14 @@ internal fun CornerPageCurlBook(
                                         haptics.onPaperRustle()
                                     }
                                 }
+                            }
+
+                            if (wasCancelled) {
+                                // Android system gesture (e.g. Back swipe) took over — abort silently!
+                                if (dragDir != CurlDirection.NONE) {
+                                    curlDirection = CurlDirection.NONE
+                                }
+                                return@awaitEachGesture
                             }
 
                             if (!isDragging && (lastUptimeMillis - downTime) < 460L) {

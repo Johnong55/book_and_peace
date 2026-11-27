@@ -6,30 +6,26 @@ import android.graphics.Color as AndroidColor
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.LruCache
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -55,7 +51,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
-private class PdfRenderEngine(pdfFile: File) {
+internal class PdfRenderEngine(pdfFile: File) {
     private val mutex = Mutex()
     private val pfd: ParcelFileDescriptor = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
     private val renderer: PdfRenderer = PdfRenderer(pfd)
@@ -93,33 +89,48 @@ private class PdfRenderEngine(pdfFile: File) {
 }
 
 @Composable
-fun PdfBookPager(
+internal fun rememberPdfRenderEngine(pdfFilePath: String): PdfRenderEngine? {
+    val engine = remember(pdfFilePath) {
+        runCatching { PdfRenderEngine(File(pdfFilePath)) }.getOrNull()
+    }
+    DisposableEffect(engine) {
+        onDispose { engine?.close() }
+    }
+    return engine
+}
+
+/**
+ * Full-screen native PDF book pager with instant zero-delay Left/Right tap-to-turn zones:
+ * - Left 35%: Turn to previous page
+ * - Center 30%: Toggle floating reader menu
+ * - Right 35%: Turn to next page
+ * Supports smooth swipe, eye-care paper tint / soft dark inversion, and pan when zoomed.
+ */
+@Composable
+internal fun PdfBookPagerCanvas(
+    engine: PdfRenderEngine?,
     pdfFilePath: String,
-    initialPage: Int,
+    pagerState: PagerState,
     themeMode: ReaderThemeMode,
     palette: ReaderPalette,
-    barsVisible: Boolean,
-    onToggleBars: () -> Unit,
+    zoomScale: Float,
+    onTapLeft: () -> Unit,
+    onTapCenter: () -> Unit,
+    onTapRight: () -> Unit,
     onPageChanged: (pageIndex: Int, totalPages: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.roundToPx() }
-    val renderWidthPx = remember(screenWidthPx) { (screenWidthPx * 1.35f).toInt().coerceIn(900, 1600) }
-
-    val engineState = remember(pdfFilePath) {
-        runCatching { PdfRenderEngine(File(pdfFilePath)) }.getOrNull()
+    val renderWidthPx = remember(screenWidthPx, zoomScale) {
+        val factor = if (zoomScale > 1.2f) 1.75f else 1.35f
+        (screenWidthPx * factor).toInt().coerceIn(900, 1800)
     }
 
-    DisposableEffect(engineState) {
-        onDispose { engineState?.close() }
-    }
-
-    if (engineState == null || engineState.pageCount <= 0) {
+    if (engine == null || engine.pageCount <= 0) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                "Không mở được file PDF gốc. Hãy chuyển sang chế độ Văn bản ở góc trên.",
+                "Không mở được file PDF gốc. Hãy chuyển sang chế độ Chữ ở thanh trên.",
                 color = palette.secondaryText,
                 modifier = Modifier.padding(24.dp)
             )
@@ -127,24 +138,19 @@ fun PdfBookPager(
         return
     }
 
-    val totalPages = engineState.pageCount
-    val pagerState = rememberPagerState(
-        initialPage = initialPage.coerceIn(0, totalPages - 1),
-        pageCount = { totalPages }
-    )
+    val totalPages = engine.pageCount
 
-    // Pre-fetch neighbor pages in background so swiping is instantaneous
-    LaunchedEffect(pagerState.currentPage) {
+    // Pre-fetch neighbor pages in background so swiping & tapping feel instantaneous
+    LaunchedEffect(pagerState.currentPage, totalPages) {
         val current = pagerState.currentPage
         onPageChanged(current, totalPages)
-        launch { engineState.renderPage(current + 1, renderWidthPx) }
-        launch { engineState.renderPage(current - 1, renderWidthPx) }
+        launch { engine.renderPage(current + 1, renderWidthPx) }
+        launch { engine.renderPage(current - 1, renderWidthPx) }
     }
 
     // Eye-comfort filter: turns stark white PDF pages into warm Sepia/Green paper, or soft dark mode at night
     val pageColorFilter = remember(themeMode, palette.background) {
         if (themeMode.isDark) {
-            // Soft low-glare inversion (avoids pure black/white halation)
             ColorFilter.colorMatrix(
                 ColorMatrix(
                     floatArrayOf(
@@ -160,48 +166,60 @@ fun PdfBookPager(
         }
     }
 
+    val isZoomed = zoomScale > 1.05f
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(palette.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(bottom = 26.dp)
     ) {
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 1,
+            userScrollEnabled = !isZoomed,
             modifier = Modifier.fillMaxSize()
         ) { pageIdx ->
             var bitmap by remember(pageIdx, pdfFilePath) { mutableStateOf<Bitmap?>(null) }
-            var zoomScale by remember(pageIdx) { mutableFloatStateOf(1f) }
+            var panX by remember(pageIdx, zoomScale) { mutableFloatStateOf(0f) }
+            var panY by remember(pageIdx, zoomScale) { mutableFloatStateOf(0f) }
 
-            LaunchedEffect(pageIdx) {
-                bitmap = engineState.renderPage(pageIdx, renderWidthPx)
+            LaunchedEffect(pageIdx, renderWidthPx) {
+                bitmap = engine.renderPage(pageIdx, renderWidthPx)
             }
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(palette.background)
-                    .pointerInput(pageIdx, totalPages) {
-                        detectTapGestures(
-                            onDoubleTap = {
-                                zoomScale = if (zoomScale > 1.1f) 1f else 1.85f
-                            },
-                            onTap = { offset ->
-                                val width = size.width.toFloat().coerceAtLeast(1f)
-                                when {
-                                    offset.x < width * 0.22f && pageIdx > 0 -> {
-                                        scope.launch { pagerState.animateScrollToPage(pageIdx - 1) }
-                                    }
-
-                                    offset.x > width * 0.78f && pageIdx < totalPages - 1 -> {
-                                        scope.launch { pagerState.animateScrollToPage(pageIdx + 1) }
-                                    }
-
-                                    else -> onToggleBars()
+                    .pointerInput(pageIdx, totalPages, isZoomed) {
+                        // Single-tap ONLY (no onDoubleTap) => 0ms instant page turn!
+                        detectTapGestures { offset ->
+                            val width = size.width.toFloat().coerceAtLeast(1f)
+                            when {
+                                offset.x < width * 0.35f -> onTapLeft()
+                                offset.x > width * 0.65f -> onTapRight()
+                                else -> onTapCenter()
+                            }
+                        }
+                    }
+                    .then(
+                        if (isZoomed) {
+                            Modifier.pointerInput(pageIdx, zoomScale) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    val maxX = size.width * (zoomScale - 1f) * 0.55f
+                                    val maxY = size.height * (zoomScale - 1f) * 0.55f
+                                    panX = (panX + dragAmount.x).coerceIn(-maxX, maxX)
+                                    panY = (panY + dragAmount.y).coerceIn(-maxY, maxY)
                                 }
                             }
-                        )
-                    },
+                        } else {
+                            Modifier
+                        }
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 val bmp = bitmap
@@ -213,10 +231,12 @@ fun PdfBookPager(
                         colorFilter = pageColorFilter,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 4.dp, vertical = 12.dp)
+                            .padding(horizontal = 4.dp, vertical = 6.dp)
                             .graphicsLayer(
                                 scaleX = zoomScale,
-                                scaleY = zoomScale
+                                scaleY = zoomScale,
+                                translationX = panX,
+                                translationY = panY
                             )
                     )
                 } else {
@@ -228,53 +248,16 @@ fun PdfBookPager(
                 }
             }
         }
+    }
+}
 
-        // Subtle e-reader page footer when bars hidden, or interactive scrubber when bars visible
-        if (barsVisible) {
-            Surface(
-                color = palette.barSurface,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-            ) {
-                var sliderPage by remember(pagerState.currentPage) { mutableIntStateOf(pagerState.currentPage) }
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    if (totalPages > 1) {
-                        Slider(
-                            value = sliderPage.toFloat(),
-                            onValueChange = { sliderPage = it.toInt().coerceIn(0, totalPages - 1) },
-                            onValueChangeFinished = {
-                                scope.launch { pagerState.scrollToPage(sliderPage) }
-                            },
-                            valueRange = 0f..(totalPages - 1).toFloat()
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            "Trang ${pagerState.currentPage + 1} / $totalPages",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = palette.text
-                        )
-                        Text(
-                            "${((pagerState.currentPage + 1) * 100 / totalPages)}% • Chạm đúp để phóng to",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = palette.secondaryText
-                        )
-                    }
-                }
-            }
-        } else {
-            Text(
-                text = "Trang ${pagerState.currentPage + 1} / $totalPages",
-                style = MaterialTheme.typography.labelSmall,
-                color = palette.secondaryText.copy(alpha = 0.75f),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 10.dp)
-            )
-        }
+internal suspend fun PagerState.flipToPageSmooth(targetPage: Int) {
+    if (pageCount <= 0) return
+    val clamped = targetPage.coerceIn(0, pageCount - 1)
+    if (clamped != currentPage) {
+        animateScrollToPage(
+            page = clamped,
+            animationSpec = tween(durationMillis = 200)
+        )
     }
 }

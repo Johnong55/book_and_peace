@@ -1,11 +1,16 @@
 package com.bookandpeace.app.ui.reader
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,8 +22,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,9 +33,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
@@ -37,30 +47,33 @@ import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.RemoveRedEye
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,11 +82,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,6 +106,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.roundToInt
 
 private sealed class ReaderBlock {
     data class Heading(val text: String) : ReaderBlock()
@@ -126,30 +142,31 @@ private fun paginateBlocks(
 ): List<List<ReaderBlock>> {
     if (blocks.isEmpty()) return emptyList()
     val usableWidthDp = (screenWidthDp - horizontalMarginDp * 2f).coerceAtLeast(220f)
-    val usableHeightDp = (screenHeightDp - 140).coerceAtLeast(360)
-    val charsPerLine = (usableWidthDp / (fontSizeSp * 0.54f)).toInt().coerceIn(22, 68)
+    // Reserve generous vertical room for status bar, nav bar, and quiet footer so text never clips
+    val usableHeightDp = (screenHeightDp - 196).coerceAtLeast(320)
+    val charsPerLine = (usableWidthDp / (fontSizeSp * 0.57f)).toInt().coerceIn(20, 62)
     val lineHeightDp = fontSizeSp * lineHeightMultiplier
-    val maxLinesPerPage = (usableHeightDp / lineHeightDp).toInt().coerceIn(10, 32)
+    val maxLinesPerPage = (usableHeightDp / lineHeightDp).toInt().coerceIn(9, 30)
+    val paragraphGapLines = (14f / lineHeightDp).coerceAtLeast(0.45f)
 
     val pages = mutableListOf<List<ReaderBlock>>()
     var currentPage = mutableListOf<ReaderBlock>()
-    var usedLines = 0
+    var usedLines = 0f
 
     for (block in blocks) {
-        val blockLines = when (block) {
-            is ReaderBlock.Heading -> ((block.text.length / (charsPerLine * 0.8f)).toInt() + 2).coerceAtLeast(2)
-            is ReaderBlock.InlineImage -> (maxLinesPerPage * 0.65f).toInt().coerceAtLeast(8)
-            is ReaderBlock.Paragraph -> ((block.text.length / charsPerLine) + 1) + 1
+        val blockLines: Float = when (block) {
+            is ReaderBlock.Heading -> ((block.text.length / (charsPerLine * 0.78f)) + 2.2f).coerceAtLeast(2.4f)
+            is ReaderBlock.InlineImage -> (maxLinesPerPage * 0.62f).coerceAtLeast(7f)
+            is ReaderBlock.Paragraph -> ((block.text.length.toFloat() / charsPerLine) + 1f) + paragraphGapLines
         }
 
         if (block is ReaderBlock.Paragraph && blockLines > maxLinesPerPage) {
-            // Split extra-long paragraph across pages gracefully
             if (currentPage.isNotEmpty()) {
                 pages.add(currentPage)
                 currentPage = mutableListOf()
-                usedLines = 0
+                usedLines = 0f
             }
-            val maxChars = (charsPerLine * (maxLinesPerPage - 2)).coerceAtLeast(300)
+            val maxChars = (charsPerLine * (maxLinesPerPage - 2)).coerceAtLeast(260)
             val sentences = block.text.split(Regex("(?<=[.!?…])\\s+"))
             val chunk = StringBuilder()
             for (s in sentences) {
@@ -162,13 +179,13 @@ private fun paginateBlocks(
             }
             if (chunk.isNotEmpty()) {
                 currentPage.add(ReaderBlock.Paragraph(chunk.toString().trim()))
-                usedLines = ((chunk.length / charsPerLine) + 2)
+                usedLines = (chunk.length.toFloat() / charsPerLine) + 1.5f
             }
         } else {
             if (usedLines + blockLines > maxLinesPerPage && currentPage.isNotEmpty()) {
                 pages.add(currentPage)
                 currentPage = mutableListOf()
-                usedLines = 0
+                usedLines = 0f
             }
             currentPage.add(block)
             usedLines += blockLines
@@ -189,13 +206,13 @@ fun ReaderScreen(
     onOpenStoryteller: (Long) -> Unit
 ) {
     val book by container.bookRepository.bookDao.observeBook(bookId).collectAsState(initial = null)
-    // Lightweight headers ONLY (never loads megabytes of all chapters into Compose state!)
     val chapterHeaders by container.bookRepository.chapterDao.observeChapterHeaders(bookId).collectAsState(initial = emptyList())
     val bookmarks by container.bookRepository.bookmarkDao.observeBookmarks(bookId).collectAsState(initial = emptyList())
     val settings by container.userPreferences.settingsFlow.collectAsState(initial = AppSettings())
 
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val config = LocalConfiguration.current
 
     val hasNativePdf = remember(book?.sourceType, book?.localFilePath) {
         book?.sourceType == BookSourceType.LOCAL_PDF &&
@@ -207,18 +224,36 @@ fun ReaderScreen(
     var currentChapterIndex by remember(bookId) { mutableIntStateOf(0) }
     var initializedProgress by remember(bookId) { mutableStateOf(false) }
     var currentChapter by remember(bookId) { mutableStateOf<ChapterEntity?>(null) }
+
+    // Page tracking for both Text Paginated and PDF modes
+    var textCurrentPage by remember(bookId) { mutableIntStateOf(0) }
+    var textTotalPages by remember(bookId) { mutableIntStateOf(1) }
+    var pendingPageTarget by remember(bookId) { mutableIntStateOf(0) } // -1 means jump to last page of chapter
+    var pendingScrubPage by remember(bookId) { mutableStateOf<Int?>(null) }
+
     var pdfCurrentPage by remember(bookId) { mutableIntStateOf(0) }
     var pdfTotalPages by remember(bookId) { mutableIntStateOf(0) }
+    var pdfZoomScale by remember(bookId) { mutableFloatStateOf(1f) }
 
-    var barsVisible by remember { mutableStateOf(true) }
+    // Clean immersive default: start reading immediately without bars blocking the page
+    var barsVisible by remember(bookId) { mutableStateOf(false) }
+    var showTapGuide by remember(bookId) { mutableStateOf(true) }
     var showTocSheet by remember { mutableStateOf(false) }
-    var showEyeComfortSheet by remember { mutableStateOf(false) }
+    var showDisplaySheet by remember { mutableStateOf(false) }
+
+    // Auto-dismiss subtle tap-zone guide after 3 seconds
+    LaunchedEffect(bookId) {
+        delay(3200L)
+        showTapGuide = false
+    }
 
     LaunchedEffect(book?.id, chapterHeaders.size, hasNativePdf) {
         val loadedBook = book ?: return@LaunchedEffect
         if (!initializedProgress) {
             if (hasNativePdf) {
                 pdfCurrentPage = loadedBook.currentScrollOffset.coerceAtLeast(0)
+            } else {
+                pendingPageTarget = loadedBook.currentScrollOffset.coerceAtLeast(0)
             }
             if (chapterHeaders.isNotEmpty()) {
                 currentChapterIndex = loadedBook.currentChapterIndex.coerceIn(0, chapterHeaders.lastIndex)
@@ -227,21 +262,13 @@ fun ReaderScreen(
         }
     }
 
-    // Load ONLY the active chapter asynchronously on Dispatchers.IO -> instant open, zero click lag!
+    // Load active chapter on Dispatchers.IO -> instant open, zero click lag
     LaunchedEffect(bookId, currentChapterIndex, chapterHeaders.size) {
         if (chapterHeaders.isNotEmpty()) {
             val ch = withContext(Dispatchers.IO) {
                 container.bookRepository.chapterDao.getChapter(bookId, currentChapterIndex)
             }
             currentChapter = ch
-            if (!useVisualPdfMode) {
-                container.bookRepository.bookDao.updateReadingProgress(
-                    bookId = bookId,
-                    chapterIndex = currentChapterIndex,
-                    scrollOffset = 0,
-                    timestamp = System.currentTimeMillis()
-                )
-            }
         }
     }
 
@@ -250,131 +277,161 @@ fun ReaderScreen(
         if (settings.eyeRestReminderEnabled) {
             while (true) {
                 delay(20L * 60L * 1000L)
-                snackbarHostState.showSnackbar("Quy tắc 20-20-20: Nghỉ mắt 20 giây nhìn xa 6m để giảm điều tiết mắt nhé!")
+                snackbarHostState.showSnackbar("Quy tắc 20-20-20: Nghỉ mắt 20 giây nhìn xa 6m để giảm mỏi mắt nhé!")
             }
         }
     }
 
     val palette = readerPaletteFor(settings.readerTheme)
 
-    Scaffold(
-        containerColor = palette.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            AnimatedVisibility(visible = barsVisible, enter = fadeIn(), exit = fadeOut()) {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = palette.barSurface,
-                        titleContentColor = palette.text,
-                        navigationIconContentColor = palette.text,
-                        actionIconContentColor = palette.text
-                    ),
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại")
-                        }
-                    },
-                    title = {
-                        Column {
-                            Text(
-                                text = book?.title.orEmpty(),
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            val sub = if (useVisualPdfMode && pdfTotalPages > 0) {
-                                "Trang gốc PDF • ${pdfCurrentPage + 1}/$pdfTotalPages"
-                            } else if (chapterHeaders.isNotEmpty()) {
-                                "Chương ${currentChapterIndex + 1}/${chapterHeaders.size}"
-                            } else ""
-                            if (sub.isNotBlank()) {
-                                Text(sub, style = MaterialTheme.typography.labelSmall, color = palette.secondaryText)
-                            }
-                        }
-                    },
-                    actions = {
-                        if (hasNativePdf) {
-                            IconButton(onClick = { useVisualPdfMode = !useVisualPdfMode }) {
-                                Icon(
-                                    if (useVisualPdfMode) Icons.Default.Description else Icons.Default.Image,
-                                    contentDescription = if (useVisualPdfMode) "Chuyển chế độ Văn bản" else "Xem trang gốc PDF có ảnh"
-                                )
-                            }
-                        }
-                        IconButton(onClick = { onOpenStoryteller(bookId) }) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "Kể Chuyện Sâu", tint = palette.secondaryAccent)
-                        }
-                        IconButton(onClick = { showEyeComfortSheet = true }) {
-                            Icon(Icons.Default.RemoveRedEye, contentDescription = "Bảo vệ mắt & Máy đọc sách")
-                        }
-                        if (!useVisualPdfMode) {
-                            IconButton(onClick = {
-                                currentChapter?.let { ch ->
-                                    scope.launch {
-                                        container.bookRepository.saveBookmark(
-                                            bookId = bookId,
-                                            chapterIndex = currentChapterIndex,
-                                            chapterTitle = ch.title,
-                                            excerpt = ch.content.take(180)
-                                        )
-                                        snackbarHostState.showSnackbar("Đã đánh dấu: ${ch.title}")
-                                    }
-                                }
-                            }) {
-                                Icon(Icons.Default.BookmarkAdd, contentDescription = "Đánh dấu")
-                            }
-                            IconButton(onClick = { showTocSheet = true }) {
-                                Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = "Mục lục")
-                            }
-                        }
-                    }
-                )
-            }
-        },
-        bottomBar = {
-            if (!useVisualPdfMode) {
-                AnimatedVisibility(visible = barsVisible, enter = fadeIn(), exit = fadeOut()) {
-                    Surface(color = palette.barSurface) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(
-                                enabled = currentChapterIndex > 0,
-                                onClick = { currentChapterIndex-- }
-                            ) {
-                                Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = palette.text)
-                                Text("Chương trước", color = palette.text)
-                            }
-                            Text(
-                                text = "${if (chapterHeaders.isEmpty()) 0 else ((currentChapterIndex + 1) * 100 / chapterHeaders.size)}%",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = palette.secondaryText
-                            )
-                            TextButton(
-                                enabled = currentChapterIndex < chapterHeaders.lastIndex,
-                                onClick = { currentChapterIndex++ }
-                            ) {
-                                Text("Chương sau", color = palette.text)
-                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = palette.text)
-                            }
-                        }
-                    }
-                }
+    // Native PDF engine & pager state lifted here so bottom slider & tap zones stay perfectly in sync
+    val pdfEngine = if (useVisualPdfMode && hasNativePdf) {
+        rememberPdfRenderEngine(book!!.localFilePath!!)
+    } else null
+    val pdfPageCount = pdfEngine?.pageCount ?: 1
+    val pdfPagerState = rememberPagerState(
+        initialPage = pdfCurrentPage.coerceIn(0, (pdfPageCount - 1).coerceAtLeast(0)),
+        pageCount = { pdfPageCount.coerceAtLeast(1) }
+    )
+
+    // Sync initial PDF page when book progress loads
+    LaunchedEffect(initializedProgress, pdfEngine) {
+        if (initializedProgress && pdfEngine != null && pdfEngine.pageCount > 0) {
+            val target = pdfCurrentPage.coerceIn(0, pdfEngine.pageCount - 1)
+            if (pdfPagerState.currentPage != target) {
+                pdfPagerState.scrollToPage(target)
             }
         }
-    ) { padding ->
+    }
+
+    // Parse & paginate active text chapter off the main thread
+    var blocks by remember(currentChapter?.id) { mutableStateOf<List<ReaderBlock>>(emptyList()) }
+    var pages by remember(
+        currentChapter?.id,
+        settings.readerFontSizeSp,
+        settings.readerLineHeightMultiplier,
+        settings.readerHorizontalMarginDp,
+        settings.readerPaginatedMode
+    ) {
+        mutableStateOf<List<List<ReaderBlock>>>(emptyList())
+    }
+
+    LaunchedEffect(
+        currentChapter?.id,
+        settings.readerFontSizeSp,
+        settings.readerLineHeightMultiplier,
+        settings.readerHorizontalMarginDp,
+        settings.readerPaginatedMode,
+        useVisualPdfMode
+    ) {
+        val ch = currentChapter ?: return@LaunchedEffect
+        if (useVisualPdfMode) return@LaunchedEffect
+        val parsed = withContext(Dispatchers.Default) { parseChapterBlocks(ch) }
+        blocks = parsed
+        if (settings.readerPaginatedMode) {
+            val paginated = withContext(Dispatchers.Default) {
+                paginateBlocks(
+                    blocks = parsed,
+                    fontSizeSp = settings.readerFontSizeSp,
+                    lineHeightMultiplier = settings.readerLineHeightMultiplier,
+                    screenHeightDp = config.screenHeightDp,
+                    screenWidthDp = config.screenWidthDp,
+                    horizontalMarginDp = settings.readerHorizontalMarginDp
+                )
+            }
+            pages = paginated
+            textTotalPages = paginated.size.coerceAtLeast(1)
+        }
+    }
+
+    fun goToPrevChapter(openAtLastPage: Boolean) {
+        if (currentChapterIndex > 0) {
+            pendingPageTarget = if (openAtLastPage) -1 else 0
+            currentChapterIndex--
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên của sách") }
+        }
+    }
+
+    fun goToNextChapter() {
+        if (currentChapterIndex < chapterHeaders.lastIndex) {
+            pendingPageTarget = 0
+            currentChapterIndex++
+        } else {
+            scope.launch { snackbarHostState.showSnackbar("Bạn đã đọc đến trang cuối của sách") }
+        }
+    }
+
+    fun saveTextProgress(chapterIdx: Int, pageIdx: Int) {
+        scope.launch(Dispatchers.IO) {
+            container.bookRepository.bookDao.updateReadingProgress(
+                bookId = bookId,
+                chapterIndex = chapterIdx,
+                scrollOffset = pageIdx,
+                timestamp = System.currentTimeMillis()
+            )
+        }
+    }
+
+    val progressFraction = remember(
+        useVisualPdfMode,
+        pdfCurrentPage,
+        pdfTotalPages,
+        currentChapterIndex,
+        chapterHeaders.size,
+        textCurrentPage,
+        textTotalPages,
+        settings.readerPaginatedMode
+    ) {
+        if (useVisualPdfMode && pdfTotalPages > 0) {
+            (pdfCurrentPage + 1).toFloat() / pdfTotalPages.toFloat()
+        } else if (chapterHeaders.isNotEmpty()) {
+            val chapterShare = 1f / chapterHeaders.size.toFloat()
+            val intraChapter = if (settings.readerPaginatedMode && textTotalPages > 0) {
+                (textCurrentPage + 1).toFloat() / textTotalPages.toFloat()
+            } else 1f
+            ((currentChapterIndex + intraChapter) * chapterShare).coerceIn(0f, 1f)
+        } else 0f
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(palette.background)
+    ) {
+        // =========================================================================
+        // LAYER 1: FULL-SCREEN READING CANVAS (Never jumps when menus toggle!)
+        // =========================================================================
         if (useVisualPdfMode && hasNativePdf) {
-            PdfBookPager(
+            PdfBookPagerCanvas(
+                engine = pdfEngine,
                 pdfFilePath = book!!.localFilePath!!,
-                initialPage = pdfCurrentPage,
+                pagerState = pdfPagerState,
                 themeMode = settings.readerTheme,
                 palette = palette,
-                barsVisible = barsVisible,
-                onToggleBars = { barsVisible = !barsVisible },
+                zoomScale = pdfZoomScale,
+                onTapLeft = {
+                    showTapGuide = false
+                    if (barsVisible) barsVisible = false
+                    if (pdfPagerState.currentPage > 0) {
+                        scope.launch { pdfPagerState.flipToPageSmooth(pdfPagerState.currentPage - 1) }
+                    } else {
+                        scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên") }
+                    }
+                },
+                onTapCenter = {
+                    showTapGuide = false
+                    barsVisible = !barsVisible
+                },
+                onTapRight = {
+                    showTapGuide = false
+                    if (barsVisible) barsVisible = false
+                    if (pdfPagerState.currentPage < pdfPagerState.pageCount - 1) {
+                        scope.launch { pdfPagerState.flipToPageSmooth(pdfPagerState.currentPage + 1) }
+                    } else {
+                        scope.launch { snackbarHostState.showSnackbar("Bạn đã đến trang cuối") }
+                    }
+                },
                 onPageChanged = { pageIdx, total ->
                     pdfCurrentPage = pageIdx
                     pdfTotalPages = total
@@ -389,37 +446,484 @@ fun ReaderScreen(
                             timestamp = System.currentTimeMillis()
                         )
                     }
-                },
-                modifier = Modifier.padding(top = if (barsVisible) padding.calculateTopPadding() else 0.dp)
+                }
             )
         } else {
             val loadedChapter = currentChapter
-            if (loadedChapter == null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding),
-                    contentAlignment = Alignment.Center
-                ) {
+            if (loadedChapter == null || blocks.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(modifier = Modifier.size(28.dp), color = palette.accent)
                 }
-            } else {
-                TextAndIllustrationReader(
-                    chapter = loadedChapter,
-                    chapterIndex = currentChapterIndex,
-                    totalChapters = chapterHeaders.size,
+            } else if (settings.readerPaginatedMode && pages.isNotEmpty()) {
+                PaginatedBookCanvas(
+                    chapterId = loadedChapter.id,
+                    pages = pages,
+                    pendingPageTarget = pendingPageTarget,
+                    pendingScrubPage = pendingScrubPage,
                     settings = settings,
                     palette = palette,
-                    barsVisible = barsVisible,
-                    contentPadding = padding,
-                    onToggleBars = { barsVisible = !barsVisible },
-                    onPrevChapter = { if (currentChapterIndex > 0) currentChapterIndex-- },
-                    onNextChapter = { if (currentChapterIndex < chapterHeaders.lastIndex) currentChapterIndex++ }
+                    onPageResolved = { resolvedPage ->
+                        textCurrentPage = resolvedPage
+                        textTotalPages = pages.size
+                        pendingPageTarget = resolvedPage
+                        pendingScrubPage = null
+                        saveTextProgress(currentChapterIndex, resolvedPage)
+                    },
+                    onTapLeft = { pagerState ->
+                        showTapGuide = false
+                        if (barsVisible) barsVisible = false
+                        if (pagerState.currentPage > 0) {
+                            scope.launch { pagerState.flipToPageSmooth(pagerState.currentPage - 1) }
+                        } else {
+                            goToPrevChapter(openAtLastPage = true)
+                        }
+                    },
+                    onTapCenter = {
+                        showTapGuide = false
+                        barsVisible = !barsVisible
+                    },
+                    onTapRight = { pagerState ->
+                        showTapGuide = false
+                        if (barsVisible) barsVisible = false
+                        if (pagerState.currentPage < pages.lastIndex) {
+                            scope.launch { pagerState.flipToPageSmooth(pagerState.currentPage + 1) }
+                        } else {
+                            goToNextChapter()
+                        }
+                    }
+                )
+            } else {
+                ScrollBookCanvas(
+                    chapterId = loadedChapter.id,
+                    blocks = blocks,
+                    settings = settings,
+                    palette = palette,
+                    onTapLeft = {
+                        showTapGuide = false
+                        if (barsVisible) barsVisible = false
+                    },
+                    onTapCenter = {
+                        showTapGuide = false
+                        barsVisible = !barsVisible
+                    },
+                    onTapRight = {
+                        showTapGuide = false
+                        if (barsVisible) barsVisible = false
+                    },
+                    onBoundaryPrevChapter = { goToPrevChapter(openAtLastPage = false) },
+                    onBoundaryNextChapter = { goToNextChapter() }
                 )
             }
         }
+
+        // =========================================================================
+        // LAYER 2: QUIET E-READER FOOTER (Always crisp & unobtrusive when reading)
+        // =========================================================================
+        if (!barsVisible) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = settings.readerHorizontalMarginDp.dp, vertical = 4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val leftLabel = if (useVisualPdfMode) {
+                        book?.title.orEmpty()
+                    } else {
+                        currentChapter?.title ?: "Chương ${currentChapterIndex + 1}"
+                    }
+                    val rightLabel = if (useVisualPdfMode && pdfTotalPages > 0) {
+                        "Trang ${pdfCurrentPage + 1}/$pdfTotalPages  •  ${(progressFraction * 100).roundToInt()}%"
+                    } else if (settings.readerPaginatedMode) {
+                        "Trang ${textCurrentPage + 1}/$textTotalPages  •  ${(progressFraction * 100).roundToInt()}%"
+                    } else {
+                        "Chương ${currentChapterIndex + 1}/${chapterHeaders.size.coerceAtLeast(1)}"
+                    }
+                    Text(
+                        text = leftLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.secondaryText.copy(alpha = 0.72f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 12.dp)
+                    )
+                    Text(
+                        text = rightLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.secondaryText.copy(alpha = 0.78f)
+                    )
+                }
+                Spacer(Modifier.height(3.dp))
+                LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .clip(CircleShape),
+                    color = palette.accent.copy(alpha = 0.55f),
+                    trackColor = palette.outline.copy(alpha = 0.28f)
+                )
+            }
+        }
+
+        // =========================================================================
+        // SUBTLE ONE-TIME TAP-ZONE GUIDE PILL (Non-blocking, auto-fades out)
+        // =========================================================================
+        AnimatedVisibility(
+            visible = showTapGuide && !barsVisible,
+            enter = fadeIn(tween(250)),
+            exit = fadeOut(tween(450)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 38.dp, start = 16.dp, end = 16.dp)
+        ) {
+            Surface(
+                color = palette.barSurface.copy(alpha = 0.94f),
+                shape = RoundedCornerShape(999.dp),
+                border = BorderStroke(1.dp, palette.outline.copy(alpha = 0.5f)),
+                shadowElevation = 2.dp
+            ) {
+                Text(
+                    text = "◀ Chạm trái: Lật lại   •   Giữa: Menu   •   Chạm phải: Lật tiếp ▶",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.text,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
+
+        // =========================================================================
+        // LAYER 3: CLEAN FLOATING TOP BAR OVERLAY
+        // =========================================================================
+        AnimatedVisibility(
+            visible = barsVisible,
+            enter = slideInVertically(tween(200)) { -it } + fadeIn(tween(180)),
+            exit = slideOutVertically(tween(180)) { -it } + fadeOut(tween(160)),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            Surface(
+                color = palette.barSurface.copy(alpha = 0.97f),
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.statusBarsPadding()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Quay lại",
+                                tint = palette.text
+                            )
+                        }
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp)
+                        ) {
+                            Text(
+                                text = book?.title.orEmpty(),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = palette.text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val subtitle = if (useVisualPdfMode && pdfTotalPages > 0) {
+                                "Trang gốc PDF • ${pdfCurrentPage + 1}/$pdfTotalPages"
+                            } else if (chapterHeaders.isNotEmpty()) {
+                                "Chương ${currentChapterIndex + 1}/${chapterHeaders.size}" +
+                                    if (settings.readerPaginatedMode) " • Trang ${textCurrentPage + 1}/$textTotalPages" else ""
+                            } else ""
+                            if (subtitle.isNotBlank()) {
+                                Text(
+                                    text = subtitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = palette.secondaryText,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        if (hasNativePdf) {
+                            Surface(
+                                color = palette.accentContainer,
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .clickable {
+                                        useVisualPdfMode = !useVisualPdfMode
+                                        pdfZoomScale = 1f
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        if (useVisualPdfMode) Icons.Default.Description else Icons.Default.Image,
+                                        contentDescription = null,
+                                        tint = palette.onAccentContainer,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (useVisualPdfMode) "Bản chữ" else "Bản PDF",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = palette.onAccentContainer
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(4.dp))
+                        }
+
+                        if (!useVisualPdfMode) {
+                            IconButton(
+                                onClick = {
+                                    currentChapter?.let { ch ->
+                                        scope.launch {
+                                            container.bookRepository.saveBookmark(
+                                                bookId = bookId,
+                                                chapterIndex = currentChapterIndex,
+                                                chapterTitle = ch.title,
+                                                excerpt = ch.content.take(180)
+                                            )
+                                            snackbarHostState.showSnackbar("Đã đánh dấu: ${ch.title}")
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.BookmarkAdd,
+                                    contentDescription = "Đánh dấu trang",
+                                    tint = palette.text
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = palette.outline.copy(alpha = 0.35f))
+                }
+            }
+        }
+
+        // =========================================================================
+        // LAYER 4: THUMB-FRIENDLY FLOATING BOTTOM CONTROL PANEL
+        // =========================================================================
+        AnimatedVisibility(
+            visible = barsVisible,
+            enter = slideInVertically(tween(200)) { it } + fadeIn(tween(180)),
+            exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(160)),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Surface(
+                color = palette.barSurface.copy(alpha = 0.98f),
+                shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+                border = BorderStroke(1.dp, palette.outline.copy(alpha = 0.35f)),
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (useVisualPdfMode && pdfTotalPages > 0) {
+                        // PDF Page Scrubber + Zoom cycle pill
+                        var sliderVal by remember(pdfCurrentPage) { mutableIntStateOf(pdfCurrentPage) }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Trang ${sliderVal + 1} / $pdfTotalPages (${(progressFraction * 100).roundToInt()}%)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = palette.text
+                            )
+                            Surface(
+                                color = palette.accentContainer,
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .clickable {
+                                        pdfZoomScale = when {
+                                            pdfZoomScale < 1.3f -> 1.6f
+                                            pdfZoomScale < 1.9f -> 2.15f
+                                            else -> 1.0f
+                                        }
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ZoomIn,
+                                        contentDescription = "Phóng to trang PDF",
+                                        tint = palette.onAccentContainer,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Thu phóng ${String.format("%.1fx", pdfZoomScale)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = palette.onAccentContainer
+                                    )
+                                }
+                            }
+                        }
+                        if (pdfTotalPages > 1) {
+                            Slider(
+                                value = sliderVal.toFloat(),
+                                onValueChange = { sliderVal = it.roundToInt().coerceIn(0, pdfTotalPages - 1) },
+                                onValueChangeFinished = {
+                                    scope.launch { pdfPagerState.scrollToPage(sliderVal) }
+                                },
+                                valueRange = 0f..(pdfTotalPages - 1).toFloat(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = palette.accent,
+                                    activeTrackColor = palette.accent
+                                )
+                            )
+                        }
+                    } else {
+                        // Text Mode: Quick chapter jump + page scrubber
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                enabled = currentChapterIndex > 0,
+                                onClick = { goToPrevChapter(openAtLastPage = false) }
+                            ) {
+                                Icon(
+                                    Icons.Default.ChevronLeft,
+                                    contentDescription = "Chương trước",
+                                    tint = if (currentChapterIndex > 0) palette.text else palette.secondaryText.copy(alpha = 0.35f)
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = currentChapter?.title ?: "Chương ${currentChapterIndex + 1}",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = palette.text,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (settings.readerPaginatedMode) {
+                                        "Trang ${textCurrentPage + 1}/$textTotalPages  •  Chương ${currentChapterIndex + 1}/${chapterHeaders.size.coerceAtLeast(1)}  •  ${(progressFraction * 100).roundToInt()}%"
+                                    } else {
+                                        "Chương ${currentChapterIndex + 1}/${chapterHeaders.size.coerceAtLeast(1)}  •  ${(progressFraction * 100).roundToInt()}%"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = palette.secondaryText
+                                )
+                            }
+                            IconButton(
+                                enabled = currentChapterIndex < chapterHeaders.lastIndex,
+                                onClick = { goToNextChapter() }
+                            ) {
+                                Icon(
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = "Chương sau",
+                                    tint = if (currentChapterIndex < chapterHeaders.lastIndex) palette.text else palette.secondaryText.copy(alpha = 0.35f)
+                                )
+                            }
+                        }
+
+                        if (settings.readerPaginatedMode && textTotalPages > 1) {
+                            var scrubVal by remember(textCurrentPage, currentChapterIndex) {
+                                mutableIntStateOf(textCurrentPage)
+                            }
+                            Slider(
+                                value = scrubVal.toFloat(),
+                                onValueChange = { scrubVal = it.roundToInt().coerceIn(0, textTotalPages - 1) },
+                                onValueChangeFinished = { pendingScrubPage = scrubVal },
+                                valueRange = 0f..(textTotalPages - 1).toFloat(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = palette.accent,
+                                    activeTrackColor = palette.accent
+                                )
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = palette.outline.copy(alpha = 0.25f))
+
+                    // 4 Big Thumb-Friendly Action Buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!useVisualPdfMode) {
+                            ReaderQuickAction(
+                                icon = Icons.AutoMirrored.Filled.FormatListBulleted,
+                                label = "Mục lục",
+                                tint = palette.text,
+                                onClick = { showTocSheet = true }
+                            )
+                        }
+                        ReaderQuickAction(
+                            icon = Icons.Default.RemoveRedEye,
+                            label = "Chữ & Mắt",
+                            tint = palette.text,
+                            onClick = { showDisplaySheet = true }
+                        )
+                        ReaderQuickAction(
+                            icon = if (settings.readerTheme.isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                            label = if (settings.readerTheme.isDark) "Ban ngày" else "Ban đêm",
+                            tint = palette.text,
+                            onClick = {
+                                val nextTheme = if (settings.readerTheme.isDark) {
+                                    ReaderThemeMode.SEPIA
+                                } else {
+                                    ReaderThemeMode.CHARCOAL_DARK
+                                }
+                                scope.launch { container.userPreferences.setReaderTheme(nextTheme) }
+                            }
+                        )
+                        ReaderQuickAction(
+                            icon = Icons.Default.AutoAwesome,
+                            label = "Kể Chuyện",
+                            tint = palette.secondaryAccent,
+                            onClick = { onOpenStoryteller(bookId) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Snackbar Host floating nicely above bottom bar
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = if (barsVisible) 180.dp else 36.dp)
+        )
     }
 
+    // =========================================================================
+    // TABLE OF CONTENTS & BOOKMARKS SHEET
+    // =========================================================================
     if (showTocSheet) {
         ModalBottomSheet(onDismissRequest = { showTocSheet = false }) {
             Column(
@@ -429,41 +933,52 @@ fun ReaderScreen(
             ) {
                 Text("Mục lục (${chapterHeaders.size} chương)", style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(10.dp))
-                LazyColumn(modifier = Modifier.height(360.dp)) {
+                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                     itemsIndexed(chapterHeaders, key = { _, ch -> ch.id }) { idx, ch ->
+                        val isCurrent = idx == currentChapterIndex
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (isCurrent) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                                    else androidx.compose.ui.graphics.Color.Transparent
+                                )
                                 .clickable {
+                                    pendingPageTarget = 0
                                     currentChapterIndex = idx
                                     showTocSheet = false
+                                    barsVisible = false
                                 }
-                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                                .padding(vertical = 12.dp, horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = ch.title,
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (idx == currentChapterIndex) FontWeight.Bold else FontWeight.Normal,
-                                color = if (idx == currentChapterIndex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        HorizontalDivider()
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                     }
                     if (bookmarks.isNotEmpty()) {
                         item {
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(14.dp))
                             Text("Đã đánh dấu (${bookmarks.size})", style = MaterialTheme.typography.titleMedium)
+                            Spacer(Modifier.height(6.dp))
                         }
                         itemsIndexed(bookmarks, key = { _, bm -> bm.id }) { _, bm ->
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
+                                        pendingPageTarget = 0
                                         currentChapterIndex = bm.chapterIndex.coerceIn(0, chapterHeaders.lastIndex)
                                         showTocSheet = false
+                                        barsVisible = false
                                     }
-                                    .padding(vertical = 8.dp, horizontal = 8.dp)
+                                    .padding(vertical = 10.dp, horizontal = 10.dp)
                             ) {
                                 Text(bm.chapterTitle, style = MaterialTheme.typography.labelLarge)
                                 Text(
@@ -477,104 +992,130 @@ fun ReaderScreen(
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(20.dp))
             }
         }
     }
 
-    if (showEyeComfortSheet) {
-        ModalBottomSheet(onDismissRequest = { showEyeComfortSheet = false }) {
+    // =========================================================================
+    // CLEAN DISPLAY & EYE-COMFORT SHEET (Tactile steppers + chips)
+    // =========================================================================
+    if (showDisplaySheet) {
+        ModalBottomSheet(onDismissRequest = { showDisplaySheet = false }) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("Máy đọc sách & Bảo vệ mắt", style = MaterialTheme.typography.titleLarge)
+                Text("Giao diện đọc & Bảo vệ mắt", style = MaterialTheme.typography.titleLarge)
 
+                // 1. Paper Color Swatches
                 EyeCareColorSwatchRow(
                     selected = settings.readerTheme,
                     onSelect = { mode -> scope.launch { container.userPreferences.setReaderTheme(mode) } }
                 )
 
                 if (!useVisualPdfMode) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                    // 2. Easy A- / A+ Font Size Stepper
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Lật trang ngang (kiểu Kindle)", style = MaterialTheme.typography.bodyMedium)
+                        Text("Cỡ chữ", style = MaterialTheme.typography.titleSmall)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    val next = (settings.readerFontSizeSp - 1.5f).coerceAtLeast(14f)
+                                    scope.launch {
+                                        container.userPreferences.setReaderTypography(
+                                            next, settings.readerLineHeightMultiplier, settings.readerUseSerif, settings.readerHorizontalMarginDp
+                                        )
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                            ) {
+                                Text("A-", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
                             Text(
-                                "Vuốt ngang hoặc chạm mép trái/phải để lật trang",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = "${settings.readerFontSizeSp.roundToInt()} pt",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.width(48.dp),
+                                textAlign = TextAlign.Center
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val next = (settings.readerFontSizeSp + 1.5f).coerceAtMost(27f)
+                                    scope.launch {
+                                        container.userPreferences.setReaderTypography(
+                                            next, settings.readerLineHeightMultiplier, settings.readerUseSerif, settings.readerHorizontalMarginDp
+                                        )
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                            ) {
+                                Text("A+", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                        }
+                    }
+
+                    // 3. Reading Mode (Paginated vs Vertical Scroll)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Kiểu lật trang (chạm trái/phải luôn hoạt động)", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            FilterChip(
+                                selected = settings.readerPaginatedMode,
+                                onClick = {
+                                    scope.launch { container.userPreferences.setReaderPaginatedMode(true) }
+                                },
+                                label = { Text("Lật trang ngang (Kindle)") }
+                            )
+                            FilterChip(
+                                selected = !settings.readerPaginatedMode,
+                                onClick = {
+                                    scope.launch { container.userPreferences.setReaderPaginatedMode(false) }
+                                },
+                                label = { Text("Cuộn dọc liên tục") }
                             )
                         }
-                        Switch(
-                            checked = settings.readerPaginatedMode,
-                            onCheckedChange = { paged ->
-                                scope.launch { container.userPreferences.setReaderPaginatedMode(paged) }
-                            }
-                        )
                     }
-                }
 
-                Text(
-                    "Lọc ánh sáng xanh ấm: ${(settings.blueLightWarmth * 100 / 0.42f).toInt()}%",
-                    style = MaterialTheme.typography.labelLarge
-                )
-                Slider(
-                    value = settings.blueLightWarmth,
-                    onValueChange = { w ->
-                        scope.launch { container.userPreferences.setEyeComfortFilters(w, settings.screenDimmer) }
-                    },
-                    valueRange = 0f..0.42f
-                )
-
-                Text(
-                    "Giảm độ chói (Đọc tối): ${(settings.screenDimmer * 100 / 0.48f).toInt()}%",
-                    style = MaterialTheme.typography.labelLarge
-                )
-                Slider(
-                    value = settings.screenDimmer,
-                    onValueChange = { d ->
-                        scope.launch { container.userPreferences.setEyeComfortFilters(settings.blueLightWarmth, d) }
-                    },
-                    valueRange = 0f..0.48f
-                )
-
-                if (!useVisualPdfMode) {
+                    // 4. Font Style & Spacing Presets
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Cỡ chữ: ${settings.readerFontSizeSp.toInt()}", style = MaterialTheme.typography.labelLarge)
-                            Slider(
-                                value = settings.readerFontSizeSp,
-                                onValueChange = { size ->
+                        Text("Kiểu chữ", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = settings.readerUseSerif,
+                                onClick = {
                                     scope.launch {
                                         container.userPreferences.setReaderTypography(
-                                            size, settings.readerLineHeightMultiplier, settings.readerUseSerif, settings.readerHorizontalMarginDp
+                                            settings.readerFontSizeSp, settings.readerLineHeightMultiplier, true, settings.readerHorizontalMarginDp
                                         )
                                     }
                                 },
-                                valueRange = 15f..26f
+                                label = { Text("Serif (Sách in)", fontFamily = FontFamily.Serif) }
                             )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Giãn dòng: ${String.format("%.2f", settings.readerLineHeightMultiplier)}", style = MaterialTheme.typography.labelLarge)
-                            Slider(
-                                value = settings.readerLineHeightMultiplier,
-                                onValueChange = { lh ->
+                            FilterChip(
+                                selected = !settings.readerUseSerif,
+                                onClick = {
                                     scope.launch {
                                         container.userPreferences.setReaderTypography(
-                                            settings.readerFontSizeSp, lh, settings.readerUseSerif, settings.readerHorizontalMarginDp
+                                            settings.readerFontSizeSp, settings.readerLineHeightMultiplier, false, settings.readerHorizontalMarginDp
                                         )
                                     }
                                 },
-                                valueRange = 1.45f..2.15f
+                                label = { Text("Sans (Gọn)") }
                             )
                         }
                     }
@@ -584,185 +1125,256 @@ fun ReaderScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Font Serif văn học", style = MaterialTheme.typography.bodyMedium)
-                        Switch(
-                            checked = settings.readerUseSerif,
-                            onCheckedChange = { serif ->
-                                scope.launch {
-                                    container.userPreferences.setReaderTypography(
-                                        settings.readerFontSizeSp, settings.readerLineHeightMultiplier, serif, settings.readerHorizontalMarginDp
-                                    )
-                                }
+                        Text("Độ thoáng dòng", style = MaterialTheme.typography.labelLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                Triple("Gọn", 1.5f, 18f),
+                                Triple("Vừa", 1.75f, 24f),
+                                Triple("Thoáng", 2.0f, 30f)
+                            ).forEach { (label, lh, margin) ->
+                                val selected = kotlin.math.abs(settings.readerLineHeightMultiplier - lh) < 0.12f
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = {
+                                        scope.launch {
+                                            container.userPreferences.setReaderTypography(
+                                                settings.readerFontSizeSp, lh, settings.readerUseSerif, margin
+                                            )
+                                        }
+                                    },
+                                    label = { Text(label) }
+                                )
                             }
-                        )
+                        }
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                // 5. Blue-Light Filter & Night Dimmer
+                Column {
+                    Text(
+                        "Lọc ánh sáng xanh ấm: ${(settings.blueLightWarmth * 100 / 0.42f).roundToInt()}%",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Slider(
+                        value = settings.blueLightWarmth,
+                        onValueChange = { w ->
+                            scope.launch { container.userPreferences.setEyeComfortFilters(w, settings.screenDimmer) }
+                        },
+                        valueRange = 0f..0.42f
+                    )
+                }
+
+                Column {
+                    Text(
+                        "Giảm độ chói ban đêm: ${(settings.screenDimmer * 100 / 0.48f).roundToInt()}%",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Slider(
+                        value = settings.screenDimmer,
+                        onValueChange = { d ->
+                            scope.launch { container.userPreferences.setEyeComfortFilters(settings.blueLightWarmth, d) }
+                        },
+                        valueRange = 0f..0.48f
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
 }
 
 @Composable
-private fun TextAndIllustrationReader(
-    chapter: ChapterEntity,
-    chapterIndex: Int,
-    totalChapters: Int,
+private fun ReaderQuickAction(
+    icon: ImageVector,
+    label: String,
+    tint: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(23.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun PaginatedBookCanvas(
+    chapterId: Long,
+    pages: List<List<ReaderBlock>>,
+    pendingPageTarget: Int,
+    pendingScrubPage: Int?,
     settings: AppSettings,
     palette: ReaderPalette,
-    barsVisible: Boolean,
-    contentPadding: PaddingValues,
-    onToggleBars: () -> Unit,
-    onPrevChapter: () -> Unit,
-    onNextChapter: () -> Unit
+    onPageResolved: (Int) -> Unit,
+    onTapLeft: (PagerState) -> Unit,
+    onTapCenter: () -> Unit,
+    onTapRight: (PagerState) -> Unit
 ) {
-    val config = LocalConfiguration.current
-    val scope = rememberCoroutineScope()
     val fontFamily = if (settings.readerUseSerif) FontFamily.Serif else FontFamily.SansSerif
-
-    // Parse & paginate on background Default dispatcher -> 0ms main-thread freeze!
-    var blocks by remember(chapter.id) { mutableStateOf<List<ReaderBlock>>(emptyList()) }
-    var pages by remember(chapter.id, settings.readerFontSizeSp, settings.readerLineHeightMultiplier, settings.readerPaginatedMode) {
-        mutableStateOf<List<List<ReaderBlock>>>(emptyList())
-    }
-
-    LaunchedEffect(chapter.id, settings.readerFontSizeSp, settings.readerLineHeightMultiplier, settings.readerPaginatedMode) {
-        val parsedBlocks = withContext(Dispatchers.Default) { parseChapterBlocks(chapter) }
-        blocks = parsedBlocks
-        if (settings.readerPaginatedMode) {
-            pages = withContext(Dispatchers.Default) {
-                paginateBlocks(
-                    blocks = parsedBlocks,
-                    fontSizeSp = settings.readerFontSizeSp,
-                    lineHeightMultiplier = settings.readerLineHeightMultiplier,
-                    screenHeightDp = config.screenHeightDp,
-                    screenWidthDp = config.screenWidthDp,
-                    horizontalMarginDp = settings.readerHorizontalMarginDp
-                )
-            }
+    val initialIdx = remember(chapterId, pages.size, pendingPageTarget) {
+        if (pendingPageTarget < 0) {
+            (pages.size - 1).coerceAtLeast(0)
+        } else {
+            pendingPageTarget.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
         }
     }
 
-    if (blocks.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = palette.accent)
+    val pagerState = rememberPagerState(
+        initialPage = initialIdx,
+        pageCount = { pages.size.coerceAtLeast(1) }
+    )
+
+    LaunchedEffect(chapterId) {
+        val target = if (pendingPageTarget < 0) {
+            (pages.size - 1).coerceAtLeast(0)
+        } else {
+            pendingPageTarget.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
         }
-        return
+        if (pagerState.currentPage != target) {
+            pagerState.scrollToPage(target)
+        }
+        onPageResolved(pagerState.currentPage)
     }
 
-    if (settings.readerPaginatedMode && pages.isNotEmpty()) {
-        val pagerState = rememberPagerState(initialPage = 0, pageCount = { pages.size })
-        LaunchedEffect(chapter.id) {
-            pagerState.scrollToPage(0)
-        }
+    LaunchedEffect(pagerState.currentPage) {
+        onPageResolved(pagerState.currentPage)
+    }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(palette.background)
-                .padding(
-                    top = if (barsVisible) contentPadding.calculateTopPadding() else 26.dp,
-                    bottom = if (barsVisible) contentPadding.calculateBottomPadding() else 14.dp
-                )
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                beyondViewportPageCount = 1,
-                modifier = Modifier.fillMaxSize()
-            ) { pageIndex ->
-                val pageBlocks = pages[pageIndex]
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(pageIndex, pages.size, chapterIndex) {
-                            detectTapGestures { offset ->
-                                val width = size.width.toFloat().coerceAtLeast(1f)
-                                when {
-                                    offset.x < width * 0.24f -> {
-                                        if (pageIndex > 0) {
-                                            scope.launch { pagerState.animateScrollToPage(pageIndex - 1) }
-                                        } else {
-                                            onPrevChapter()
-                                        }
-                                    }
+    LaunchedEffect(pendingScrubPage) {
+        val target = pendingScrubPage ?: return@LaunchedEffect
+        pagerState.scrollToPage(target.coerceIn(0, (pages.size - 1).coerceAtLeast(0)))
+    }
 
-                                    offset.x > width * 0.76f -> {
-                                        if (pageIndex < pages.lastIndex) {
-                                            scope.launch { pagerState.animateScrollToPage(pageIndex + 1) }
-                                        } else {
-                                            onNextChapter()
-                                        }
-                                    }
-
-                                    else -> onToggleBars()
-                                }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(bottom = 28.dp)
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            beyondViewportPageCount = 1,
+            modifier = Modifier.fillMaxSize()
+        ) { pageIndex ->
+            val pageBlocks = pages.getOrNull(pageIndex).orEmpty()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(chapterId, pageIndex, pages.size) {
+                        detectTapGestures { offset ->
+                            val width = size.width.toFloat().coerceAtLeast(1f)
+                            when {
+                                offset.x < width * 0.35f -> onTapLeft(pagerState)
+                                offset.x > width * 0.65f -> onTapRight(pagerState)
+                                else -> onTapCenter()
                             }
                         }
-                        .padding(horizontal = settings.readerHorizontalMarginDp.dp, vertical = 14.dp)
-                ) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        pageBlocks.forEach { block ->
-                            ReaderBlockView(
-                                block = block,
-                                fontFamily = fontFamily,
-                                settings = settings,
-                                palette = palette
-                            )
-                        }
+                    }
+                    .padding(horizontal = settings.readerHorizontalMarginDp.dp, vertical = 14.dp)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    pageBlocks.forEach { block ->
+                        ReaderBlockView(
+                            block = block,
+                            fontFamily = fontFamily,
+                            settings = settings,
+                            palette = palette
+                        )
                     }
                 }
             }
-
-            // Crisp Kindle-style page footer
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = settings.readerHorizontalMarginDp.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Chương ${chapterIndex + 1}/$totalChapters",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = palette.secondaryText.copy(alpha = 0.75f)
-                )
-                Text(
-                    text = "Trang ${pagerState.currentPage + 1} / ${pages.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = palette.secondaryText.copy(alpha = 0.75f)
-                )
-            }
         }
-    } else {
-        // Virtualized LazyColumn scroll mode — butter smooth 60-120 FPS even on giant chapters!
-        val listState = rememberLazyListState()
-        LaunchedEffect(chapter.id) { listState.scrollToItem(0) }
+    }
+}
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(palette.background)
-                .pointerInput(Unit) { detectTapGestures { onToggleBars() } },
-            contentPadding = PaddingValues(
-                start = settings.readerHorizontalMarginDp.dp,
-                end = settings.readerHorizontalMarginDp.dp,
-                top = (if (barsVisible) contentPadding.calculateTopPadding() else 28.dp) + 14.dp,
-                bottom = (if (barsVisible) contentPadding.calculateBottomPadding() else 24.dp) + 32.dp
+@Composable
+private fun ScrollBookCanvas(
+    chapterId: Long,
+    blocks: List<ReaderBlock>,
+    settings: AppSettings,
+    palette: ReaderPalette,
+    onTapLeft: () -> Unit,
+    onTapCenter: () -> Unit,
+    onTapRight: () -> Unit,
+    onBoundaryPrevChapter: () -> Unit,
+    onBoundaryNextChapter: () -> Unit
+) {
+    val fontFamily = if (settings.readerUseSerif) FontFamily.Serif else FontFamily.SansSerif
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(chapterId) {
+        listState.scrollToItem(0)
+    }
+
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .pointerInput(chapterId) {
+                detectTapGestures { offset ->
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    val pageStepPx = size.height * 0.80f
+                    when {
+                        offset.x < width * 0.35f -> {
+                            onTapLeft()
+                            if (!listState.canScrollBackward) {
+                                onBoundaryPrevChapter()
+                            } else {
+                                scope.launch { listState.animateScrollBy(-pageStepPx, tween(220)) }
+                            }
+                        }
+
+                        offset.x > width * 0.65f -> {
+                            onTapRight()
+                            if (!listState.canScrollForward) {
+                                onBoundaryNextChapter()
+                            } else {
+                                scope.launch { listState.animateScrollBy(pageStepPx, tween(220)) }
+                            }
+                        }
+
+                        else -> onTapCenter()
+                    }
+                }
+            },
+        contentPadding = PaddingValues(
+            start = settings.readerHorizontalMarginDp.dp,
+            end = settings.readerHorizontalMarginDp.dp,
+            top = 18.dp,
+            bottom = 44.dp
+        )
+    ) {
+        itemsIndexed(
+            items = blocks,
+            key = { idx, _ -> "${chapterId}_$idx" },
+            contentType = { _, block -> block::class.simpleName }
+        ) { _, block ->
+            ReaderBlockView(
+                block = block,
+                fontFamily = fontFamily,
+                settings = settings,
+                palette = palette
             )
-        ) {
-            itemsIndexed(
-                items = blocks,
-                key = { idx, _ -> "${chapter.id}_$idx" },
-                contentType = { _, block -> block::class.simpleName }
-            ) { _, block ->
-                ReaderBlockView(
-                    block = block,
-                    fontFamily = fontFamily,
-                    settings = settings,
-                    palette = palette
-                )
-            }
         }
     }
 }

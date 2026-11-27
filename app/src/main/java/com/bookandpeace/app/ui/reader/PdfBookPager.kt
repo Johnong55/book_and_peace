@@ -58,6 +58,8 @@ internal class PdfRenderEngine(pdfFile: File) {
 
     val pageCount: Int get() = renderer.pageCount
 
+    fun getCachedPage(index: Int): Bitmap? = cache.get(index)
+
     suspend fun renderPage(index: Int, targetWidthPx: Int): Bitmap? = withContext(Dispatchers.IO) {
         if (index !in 0 until pageCount) return@withContext null
         cache.get(index)?.let { return@withContext it }
@@ -99,24 +101,29 @@ internal fun rememberPdfRenderEngine(pdfFilePath: String): PdfRenderEngine? {
 }
 
 /**
- * Full-screen native PDF book pager with:
- * - Instant zero-delay Left/Right tap-to-turn zones (35% left / 30% center / 35% right)
- * - Realistic 3D physical book page-turning animation + dynamic shadow & spine lighting
- * - Interactive tactile paper-lift & paper-settle haptics
+ * Full-screen native PDF book reader supporting:
+ * - Realistic corner page-curl peeling (bottom-right / top-right corner drag & curved tap arc)
+ * - Smooth slide mode + zoomed pan mode
+ * - Instant zero-delay Left/Right tap-to-turn zones + 3-stage tactile paper haptics
  */
 @Composable
 internal fun PdfBookPagerCanvas(
     engine: PdfRenderEngine?,
     pdfFilePath: String,
+    currentPage: Int,
     pagerState: PagerState,
     themeMode: ReaderThemeMode,
     pageTurnStyle: PageTurnStyle,
     palette: ReaderPalette,
     haptics: BookHaptics,
     zoomScale: Float,
-    onTapLeft: () -> Unit,
+    onInteractionStart: () -> Unit,
+    onPageSelected: (Int) -> Unit,
+    onTapLeftSlide: () -> Unit,
     onTapCenter: () -> Unit,
-    onTapRight: () -> Unit,
+    onTapRightSlide: () -> Unit,
+    onBoundaryPrev: () -> Unit,
+    onBoundaryNext: () -> Unit,
     onPageChanged: (pageIndex: Int, totalPages: Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -139,16 +146,16 @@ internal fun PdfBookPagerCanvas(
     }
 
     val totalPages = engine.pageCount
+    val isZoomed = zoomScale > 1.05f
+    val useCornerCurl = pageTurnStyle == PageTurnStyle.REALISTIC_BOOK && !isZoomed
+    val activePage = if (useCornerCurl) currentPage.coerceIn(0, totalPages - 1) else pagerState.currentPage
 
-    // Interactive drag lift & settle haptics
-    ObserveBookPagerHaptics(pagerState = pagerState, haptics = haptics)
-
-    // Pre-fetch neighbor pages in background so swiping & 3D page turns are instantaneous
-    LaunchedEffect(pagerState.currentPage, totalPages) {
-        val current = pagerState.currentPage
-        onPageChanged(current, totalPages)
-        launch { engine.renderPage(current + 1, renderWidthPx) }
-        launch { engine.renderPage(current - 1, renderWidthPx) }
+    // Pre-fetch neighbor PDF pages so the page underneath the curled corner is ALWAYS instant
+    LaunchedEffect(activePage, totalPages, renderWidthPx) {
+        onPageChanged(activePage, totalPages)
+        launch { engine.renderPage(activePage, renderWidthPx) }
+        launch { engine.renderPage(activePage + 1, renderWidthPx) }
+        launch { engine.renderPage(activePage - 1, renderWidthPx) }
     }
 
     // Eye-comfort filter: turns stark white PDF pages into warm Sepia/Green paper, or soft dark mode at night
@@ -169,8 +176,6 @@ internal fun PdfBookPagerCanvas(
         }
     }
 
-    val isZoomed = zoomScale > 1.05f
-
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -179,83 +184,138 @@ internal fun PdfBookPagerCanvas(
             .navigationBarsPadding()
             .padding(bottom = 26.dp)
     ) {
-        HorizontalPager(
-            state = pagerState,
-            beyondViewportPageCount = 1,
-            userScrollEnabled = !isZoomed,
-            modifier = Modifier.fillMaxSize()
-        ) { pageIdx ->
-            var bitmap by remember(pageIdx, pdfFilePath) { mutableStateOf<Bitmap?>(null) }
-            var panX by remember(pageIdx, zoomScale) { mutableFloatStateOf(0f) }
-            var panY by remember(pageIdx, zoomScale) { mutableFloatStateOf(0f) }
-
-            LaunchedEffect(pageIdx, renderWidthPx) {
-                bitmap = engine.renderPage(pageIdx, renderWidthPx)
+        if (useCornerCurl) {
+            CornerPageCurlBook(
+                pageCount = totalPages,
+                currentPage = activePage,
+                palette = palette,
+                isDark = themeMode.isDark,
+                haptics = haptics,
+                gestureEnabled = true,
+                onInteractionStart = onInteractionStart,
+                onPageCommitted = { newPage -> onPageSelected(newPage) },
+                onBoundaryPrev = onBoundaryPrev,
+                onBoundaryNext = onBoundaryNext,
+                onTapCenter = onTapCenter
+            ) { pageIdx ->
+                PdfSinglePageSurface(
+                    engine = engine,
+                    pdfFilePath = pdfFilePath,
+                    pageIdx = pageIdx,
+                    renderWidthPx = renderWidthPx,
+                    palette = palette,
+                    colorFilter = pageColorFilter
+                )
             }
+        } else {
+            ObserveBookPagerHaptics(pagerState = pagerState, haptics = haptics)
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .bookPageFlipEffect(
-                        pagerState = pagerState,
-                        pageIndex = pageIdx,
-                        style = if (isZoomed) PageTurnStyle.SMOOTH_SLIDE else pageTurnStyle,
-                        palette = palette,
-                        isDark = themeMode.isDark
-                    )
-                    .background(palette.background)
-                    .pointerInput(pageIdx, totalPages, isZoomed) {
-                        detectTapGestures { offset ->
-                            val width = size.width.toFloat().coerceAtLeast(1f)
-                            when {
-                                offset.x < width * 0.35f -> onTapLeft()
-                                offset.x > width * 0.65f -> onTapRight()
-                                else -> onTapCenter()
-                            }
-                        }
-                    }
-                    .then(
-                        if (isZoomed) {
-                            Modifier.pointerInput(pageIdx, zoomScale) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    val maxX = size.width * (zoomScale - 1f) * 0.55f
-                                    val maxY = size.height * (zoomScale - 1f) * 0.55f
-                                    panX = (panX + dragAmount.x).coerceIn(-maxX, maxX)
-                                    panY = (panY + dragAmount.y).coerceIn(-maxY, maxY)
+            HorizontalPager(
+                state = pagerState,
+                beyondViewportPageCount = 1,
+                userScrollEnabled = !isZoomed,
+                modifier = Modifier.fillMaxSize()
+            ) { pageIdx ->
+                var panX by remember(pageIdx, zoomScale) { mutableFloatStateOf(0f) }
+                var panY by remember(pageIdx, zoomScale) { mutableFloatStateOf(0f) }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(palette.background)
+                        .pointerInput(pageIdx, totalPages, isZoomed) {
+                            detectTapGestures { offset ->
+                                val width = size.width.toFloat().coerceAtLeast(1f)
+                                when {
+                                    offset.x < width * 0.35f -> onTapLeftSlide()
+                                    offset.x > width * 0.65f -> onTapRightSlide()
+                                    else -> onTapCenter()
                                 }
                             }
-                        } else {
-                            Modifier
                         }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                val bmp = bitmap
-                if (bmp != null) {
-                    Image(
-                        bitmap = bmp.asImageBitmap(),
-                        contentDescription = "Trang ${pageIdx + 1}",
-                        contentScale = ContentScale.Fit,
+                        .then(
+                            if (isZoomed) {
+                                Modifier.pointerInput(pageIdx, zoomScale) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        val maxX = size.width * (zoomScale - 1f) * 0.55f
+                                        val maxY = size.height * (zoomScale - 1f) * 0.55f
+                                        panX = (panX + dragAmount.x).coerceIn(-maxX, maxX)
+                                        panY = (panY + dragAmount.y).coerceIn(-maxY, maxY)
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PdfSinglePageSurface(
+                        engine = engine,
+                        pdfFilePath = pdfFilePath,
+                        pageIdx = pageIdx,
+                        renderWidthPx = renderWidthPx,
+                        palette = palette,
                         colorFilter = pageColorFilter,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 4.dp, vertical = 6.dp)
-                            .graphicsLayer(
-                                scaleX = zoomScale,
-                                scaleY = zoomScale,
-                                translationX = panX,
-                                translationY = panY
-                            )
-                    )
-                } else {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 2.5.dp,
-                        color = palette.accent
+                        zoomScale = zoomScale,
+                        panX = panX,
+                        panY = panY
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PdfSinglePageSurface(
+    engine: PdfRenderEngine,
+    pdfFilePath: String,
+    pageIdx: Int,
+    renderWidthPx: Int,
+    palette: ReaderPalette,
+    colorFilter: ColorFilter,
+    zoomScale: Float = 1f,
+    panX: Float = 0f,
+    panY: Float = 0f
+) {
+    var bitmap by remember(pageIdx, pdfFilePath) { mutableStateOf(engine.getCachedPage(pageIdx)) }
+
+    LaunchedEffect(pageIdx, renderWidthPx) {
+        if (bitmap == null || zoomScale > 1.2f) {
+            bitmap = engine.renderPage(pageIdx, renderWidthPx)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(palette.background),
+        contentAlignment = Alignment.Center
+    ) {
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = "Trang ${pageIdx + 1}",
+                contentScale = ContentScale.Fit,
+                colorFilter = colorFilter,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp, vertical = 6.dp)
+                    .graphicsLayer(
+                        scaleX = zoomScale,
+                        scaleY = zoomScale,
+                        translationX = panX,
+                        translationY = panY
+                    )
+            )
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.5.dp,
+                color = palette.accent
+            )
         }
     }
 }

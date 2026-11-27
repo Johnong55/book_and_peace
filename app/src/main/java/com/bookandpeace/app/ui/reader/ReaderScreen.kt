@@ -413,13 +413,26 @@ fun ReaderScreen(
             PdfBookPagerCanvas(
                 engine = pdfEngine,
                 pdfFilePath = book!!.localFilePath!!,
+                currentPage = pdfCurrentPage,
                 pagerState = pdfPagerState,
                 themeMode = settings.readerTheme,
                 pageTurnStyle = settings.readerPageTurnStyle,
                 palette = palette,
                 haptics = haptics,
                 zoomScale = pdfZoomScale,
-                onTapLeft = {
+                onInteractionStart = {
+                    showTapGuide = false
+                    if (barsVisible) barsVisible = false
+                },
+                onPageSelected = { newPage ->
+                    pdfCurrentPage = newPage
+                    scope.launch {
+                        if (pdfPagerState.currentPage != newPage) {
+                            pdfPagerState.scrollToPage(newPage.coerceIn(0, (pdfPagerState.pageCount - 1).coerceAtLeast(0)))
+                        }
+                    }
+                },
+                onTapLeftSlide = {
                     showTapGuide = false
                     if (barsVisible) barsVisible = false
                     if (pdfPagerState.currentPage > 0) {
@@ -427,7 +440,7 @@ fun ReaderScreen(
                         scope.launch {
                             pdfPagerState.flipToPageRealistic(
                                 targetPage = pdfPagerState.currentPage - 1,
-                                style = settings.readerPageTurnStyle
+                                style = PageTurnStyle.SMOOTH_SLIDE
                             )
                         }
                     } else {
@@ -440,7 +453,7 @@ fun ReaderScreen(
                     haptics.onUiTick()
                     barsVisible = !barsVisible
                 },
-                onTapRight = {
+                onTapRightSlide = {
                     showTapGuide = false
                     if (barsVisible) barsVisible = false
                     if (pdfPagerState.currentPage < pdfPagerState.pageCount - 1) {
@@ -448,13 +461,21 @@ fun ReaderScreen(
                         scope.launch {
                             pdfPagerState.flipToPageRealistic(
                                 targetPage = pdfPagerState.currentPage + 1,
-                                style = settings.readerPageTurnStyle
+                                style = PageTurnStyle.SMOOTH_SLIDE
                             )
                         }
                     } else {
                         haptics.onBookBoundary()
                         scope.launch { snackbarHostState.showSnackbar("Bạn đã đến trang cuối") }
                     }
+                },
+                onBoundaryPrev = {
+                    haptics.onBookBoundary()
+                    scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên") }
+                },
+                onBoundaryNext = {
+                    haptics.onBookBoundary()
+                    scope.launch { snackbarHostState.showSnackbar("Bạn đã đến trang cuối") }
                 },
                 onPageChanged = { pageIdx, total ->
                     pdfCurrentPage = pageIdx
@@ -487,6 +508,10 @@ fun ReaderScreen(
                     settings = settings,
                     palette = palette,
                     haptics = haptics,
+                    onInteractionStart = {
+                        showTapGuide = false
+                        if (barsVisible) barsVisible = false
+                    },
                     onPageResolved = { resolvedPage ->
                         textCurrentPage = resolvedPage
                         textTotalPages = pages.size
@@ -494,40 +519,12 @@ fun ReaderScreen(
                         pendingScrubPage = null
                         saveTextProgress(currentChapterIndex, resolvedPage)
                     },
-                    onTapLeft = { pagerState ->
-                        showTapGuide = false
-                        if (barsVisible) barsVisible = false
-                        if (pagerState.currentPage > 0) {
-                            haptics.onPageLift()
-                            scope.launch {
-                                pagerState.flipToPageRealistic(
-                                    targetPage = pagerState.currentPage - 1,
-                                    style = settings.readerPageTurnStyle
-                                )
-                            }
-                        } else {
-                            goToPrevChapter(openAtLastPage = true)
-                        }
-                    },
+                    onBoundaryPrevChapter = { goToPrevChapter(openAtLastPage = true) },
+                    onBoundaryNextChapter = { goToNextChapter() },
                     onTapCenter = {
                         showTapGuide = false
                         haptics.onUiTick()
                         barsVisible = !barsVisible
-                    },
-                    onTapRight = { pagerState ->
-                        showTapGuide = false
-                        if (barsVisible) barsVisible = false
-                        if (pagerState.currentPage < pages.lastIndex) {
-                            haptics.onPageLift()
-                            scope.launch {
-                                pagerState.flipToPageRealistic(
-                                    targetPage = pagerState.currentPage + 1,
-                                    style = settings.readerPageTurnStyle
-                                )
-                            }
-                        } else {
-                            goToNextChapter()
-                        }
                     }
                 )
             } else {
@@ -831,6 +828,7 @@ fun ReaderScreen(
                                 value = sliderVal.toFloat(),
                                 onValueChange = { sliderVal = it.roundToInt().coerceIn(0, pdfTotalPages - 1) },
                                 onValueChangeFinished = {
+                                    pdfCurrentPage = sliderVal
                                     scope.launch { pdfPagerState.scrollToPage(sliderVal) }
                                 },
                                 valueRange = 0f..(pdfTotalPages - 1).toFloat(),
@@ -1077,7 +1075,7 @@ fun ReaderScreen(
                                 },
                                 label = {
                                     Text(
-                                        if (style == PageTurnStyle.REALISTIC_BOOK) "Lật giấy 3D (Sách thật)"
+                                        if (style == PageTurnStyle.REALISTIC_BOOK) "Lật góc giấy (Sách thật)"
                                         else "Trượt êm"
                                     )
                                 }
@@ -1315,11 +1313,13 @@ private fun PaginatedBookCanvas(
     settings: AppSettings,
     palette: ReaderPalette,
     haptics: BookHaptics,
+    onInteractionStart: () -> Unit,
     onPageResolved: (Int) -> Unit,
-    onTapLeft: (PagerState) -> Unit,
-    onTapCenter: () -> Unit,
-    onTapRight: (PagerState) -> Unit
+    onBoundaryPrevChapter: () -> Unit,
+    onBoundaryNextChapter: () -> Unit,
+    onTapCenter: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     val fontFamily = if (settings.readerUseSerif) FontFamily.Serif else FontFamily.SansSerif
     val initialIdx = remember(chapterId, pages.size, pendingPageTarget) {
         if (pendingPageTarget < 0) {
@@ -1327,35 +1327,6 @@ private fun PaginatedBookCanvas(
         } else {
             pendingPageTarget.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
         }
-    }
-
-    val pagerState = rememberPagerState(
-        initialPage = initialIdx,
-        pageCount = { pages.size.coerceAtLeast(1) }
-    )
-
-    // Interactive tactile lift & settle haptics for both swiping and tapping
-    ObserveBookPagerHaptics(pagerState = pagerState, haptics = haptics)
-
-    LaunchedEffect(chapterId) {
-        val target = if (pendingPageTarget < 0) {
-            (pages.size - 1).coerceAtLeast(0)
-        } else {
-            pendingPageTarget.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
-        }
-        if (pagerState.currentPage != target) {
-            pagerState.scrollToPage(target)
-        }
-        onPageResolved(pagerState.currentPage)
-    }
-
-    LaunchedEffect(pagerState.currentPage) {
-        onPageResolved(pagerState.currentPage)
-    }
-
-    LaunchedEffect(pendingScrubPage) {
-        val target = pendingScrubPage ?: return@LaunchedEffect
-        pagerState.scrollToPage(target.coerceIn(0, (pages.size - 1).coerceAtLeast(0)))
     }
 
     Box(
@@ -1366,36 +1337,48 @@ private fun PaginatedBookCanvas(
             .navigationBarsPadding()
             .padding(bottom = 28.dp)
     ) {
-        HorizontalPager(
-            state = pagerState,
-            beyondViewportPageCount = 1,
-            modifier = Modifier.fillMaxSize()
-        ) { pageIndex ->
-            val pageBlocks = pages.getOrNull(pageIndex).orEmpty()
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .bookPageFlipEffect(
-                        pagerState = pagerState,
-                        pageIndex = pageIndex,
-                        style = settings.readerPageTurnStyle,
-                        palette = palette,
-                        isDark = settings.readerTheme.isDark
-                    )
-                    .background(palette.background)
-                    .pointerInput(chapterId, pageIndex, pages.size) {
-                        detectTapGestures { offset ->
-                            val width = size.width.toFloat().coerceAtLeast(1f)
-                            when {
-                                offset.x < width * 0.35f -> onTapLeft(pagerState)
-                                offset.x > width * 0.65f -> onTapRight(pagerState)
-                                else -> onTapCenter()
-                            }
-                        }
-                    }
-                    .padding(horizontal = settings.readerHorizontalMarginDp.dp, vertical = 14.dp)
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
+        if (settings.readerPageTurnStyle == PageTurnStyle.REALISTIC_BOOK) {
+            var activePage by remember(chapterId, pages.size) { mutableIntStateOf(initialIdx) }
+
+            LaunchedEffect(chapterId) {
+                val target = if (pendingPageTarget < 0) {
+                    (pages.size - 1).coerceAtLeast(0)
+                } else {
+                    pendingPageTarget.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+                }
+                activePage = target
+                onPageResolved(target)
+            }
+
+            LaunchedEffect(pendingScrubPage) {
+                val target = pendingScrubPage ?: return@LaunchedEffect
+                val clamped = target.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+                activePage = clamped
+                onPageResolved(clamped)
+            }
+
+            CornerPageCurlBook(
+                pageCount = pages.size,
+                currentPage = activePage,
+                palette = palette,
+                isDark = settings.readerTheme.isDark,
+                haptics = haptics,
+                gestureEnabled = true,
+                onInteractionStart = onInteractionStart,
+                onPageCommitted = { newPage ->
+                    activePage = newPage
+                    onPageResolved(newPage)
+                },
+                onBoundaryPrev = onBoundaryPrevChapter,
+                onBoundaryNext = onBoundaryNextChapter,
+                onTapCenter = onTapCenter
+            ) { pageIndex ->
+                val pageBlocks = pages.getOrNull(pageIndex).orEmpty()
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = settings.readerHorizontalMarginDp.dp, vertical = 14.dp)
+                ) {
                     pageBlocks.forEach { block ->
                         ReaderBlockView(
                             block = block,
@@ -1403,6 +1386,97 @@ private fun PaginatedBookCanvas(
                             settings = settings,
                             palette = palette
                         )
+                    }
+                }
+            }
+        } else {
+            val pagerState = rememberPagerState(
+                initialPage = initialIdx,
+                pageCount = { pages.size.coerceAtLeast(1) }
+            )
+
+            ObserveBookPagerHaptics(pagerState = pagerState, haptics = haptics)
+
+            LaunchedEffect(chapterId) {
+                val target = if (pendingPageTarget < 0) {
+                    (pages.size - 1).coerceAtLeast(0)
+                } else {
+                    pendingPageTarget.coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+                }
+                if (pagerState.currentPage != target) {
+                    pagerState.scrollToPage(target)
+                }
+                onPageResolved(pagerState.currentPage)
+            }
+
+            LaunchedEffect(pagerState.currentPage) {
+                onPageResolved(pagerState.currentPage)
+            }
+
+            LaunchedEffect(pendingScrubPage) {
+                val target = pendingScrubPage ?: return@LaunchedEffect
+                pagerState.scrollToPage(target.coerceIn(0, (pages.size - 1).coerceAtLeast(0)))
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                beyondViewportPageCount = 1,
+                modifier = Modifier.fillMaxSize()
+            ) { pageIndex ->
+                val pageBlocks = pages.getOrNull(pageIndex).orEmpty()
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(palette.background)
+                        .pointerInput(chapterId, pageIndex, pages.size) {
+                            detectTapGestures { offset ->
+                                val width = size.width.toFloat().coerceAtLeast(1f)
+                                when {
+                                    offset.x < width * 0.35f -> {
+                                        onInteractionStart()
+                                        if (pagerState.currentPage > 0) {
+                                            haptics.onPageLift()
+                                            scope.launch {
+                                                pagerState.flipToPageRealistic(
+                                                    targetPage = pagerState.currentPage - 1,
+                                                    style = PageTurnStyle.SMOOTH_SLIDE
+                                                )
+                                            }
+                                        } else {
+                                            onBoundaryPrevChapter()
+                                        }
+                                    }
+
+                                    offset.x > width * 0.65f -> {
+                                        onInteractionStart()
+                                        if (pagerState.currentPage < pages.lastIndex) {
+                                            haptics.onPageLift()
+                                            scope.launch {
+                                                pagerState.flipToPageRealistic(
+                                                    targetPage = pagerState.currentPage + 1,
+                                                    style = PageTurnStyle.SMOOTH_SLIDE
+                                                )
+                                            }
+                                        } else {
+                                            onBoundaryNextChapter()
+                                        }
+                                    }
+
+                                    else -> onTapCenter()
+                                }
+                            }
+                        }
+                        .padding(horizontal = settings.readerHorizontalMarginDp.dp, vertical = 14.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        pageBlocks.forEach { block ->
+                            ReaderBlockView(
+                                block = block,
+                                fontFamily = fontFamily,
+                                settings = settings,
+                                palette = palette
+                            )
+                        }
                     }
                 }
             }

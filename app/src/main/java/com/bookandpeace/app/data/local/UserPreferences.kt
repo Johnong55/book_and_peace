@@ -28,7 +28,7 @@ enum class ReaderThemeMode(
 }
 
 enum class PageTurnStyle(val label: String) {
-    REALISTIC_BOOK("Lật giấy 3D"),
+    REALISTIC_BOOK("Lật góc giấy"),
     SMOOTH_SLIDE("Trượt êm")
 }
 

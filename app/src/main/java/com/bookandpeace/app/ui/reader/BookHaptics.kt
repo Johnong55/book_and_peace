@@ -58,6 +58,24 @@ internal class BookHaptics(
         vibrateFallback(durationMs = 7L, amplitude = 42, fallbackViewConstant = HapticFeedbackConstants.CLOCK_TICK)
     }
 
+    /** Feather-light paper-bend micro-tick when dragging a curled page past midpoint */
+    fun onPaperRustle() {
+        if (!enabled) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && hasVibrator) {
+            val v = vibrator ?: return
+            if (v.areAllPrimitivesSupported(VibrationEffect.Composition.PRIMITIVE_LOW_TICK)) {
+                runCatching {
+                    val effect = VibrationEffect.startComposition()
+                        .addPrimitive(VibrationEffect.Composition.PRIMITIVE_LOW_TICK, 0.20f)
+                        .compose()
+                    v.vibrate(effect)
+                    return
+                }
+            }
+        }
+        vibrateFallback(durationMs = 4L, amplitude = 28, fallbackViewConstant = HapticFeedbackConstants.CLOCK_TICK)
+    }
+
     /** Crisp two-stage paper-flutter & landing settle when a page completes its turn */
     fun onPageSettle() {
         if (!enabled) return

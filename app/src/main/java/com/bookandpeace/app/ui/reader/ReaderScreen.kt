@@ -354,7 +354,6 @@ fun ReaderScreen(
             currentChapterIndex--
         } else {
             haptics.onBookBoundary()
-            scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên của sách") }
         }
     }
 
@@ -365,7 +364,6 @@ fun ReaderScreen(
             currentChapterIndex++
         } else {
             haptics.onBookBoundary()
-            scope.launch { snackbarHostState.showSnackbar("Bạn đã đọc đến trang cuối của sách") }
         }
     }
 
@@ -445,7 +443,6 @@ fun ReaderScreen(
                         }
                     } else {
                         haptics.onBookBoundary()
-                        scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên") }
                     }
                 },
                 onTapCenter = {
@@ -466,16 +463,13 @@ fun ReaderScreen(
                         }
                     } else {
                         haptics.onBookBoundary()
-                        scope.launch { snackbarHostState.showSnackbar("Bạn đã đến trang cuối") }
                     }
                 },
                 onBoundaryPrev = {
                     haptics.onBookBoundary()
-                    scope.launch { snackbarHostState.showSnackbar("Bạn đang ở trang đầu tiên") }
                 },
                 onBoundaryNext = {
                     haptics.onBookBoundary()
-                    scope.launch { snackbarHostState.showSnackbar("Bạn đã đến trang cuối") }
                 },
                 onPageChanged = { pageIdx, total ->
                     pdfCurrentPage = pageIdx

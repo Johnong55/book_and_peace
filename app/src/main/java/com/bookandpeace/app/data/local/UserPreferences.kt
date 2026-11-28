@@ -32,6 +32,13 @@ enum class PageTurnStyle(val label: String) {
     SMOOTH_SLIDE("Trượt êm")
 }
 
+enum class AmbientSoundMode(val label: String, val subtitle: String) {
+    OFF("Tắt", "Đọc trong yên tĩnh tuyệt đối"),
+    RAIN("Mưa rơi", "Tiếng mưa êm rơi bên mái hiên"),
+    FIREPLACE("Lò sưởi", "Lửa ấm & tiếng củi cháy tí tách"),
+    QUIET_NIGHT("Đêm yên tĩnh", "Gió đêm dịu nhẹ & tiếng dế xa")
+}
+
 data class AppSettings(
     val geminiApiKey: String = BuildConfig.DEFAULT_GEMINI_API_KEY,
     val geminiTextModel: String = "gemini-3.8-flash",
@@ -50,6 +57,9 @@ data class AppSettings(
     val readerPaginatedMode: Boolean = true,
     val readerPageTurnStyle: PageTurnStyle = PageTurnStyle.REALISTIC_BOOK,
     val readerHapticsEnabled: Boolean = true,
+    val readerPageSoundEnabled: Boolean = true,
+    val readerAmbientSound: AmbientSoundMode = AmbientSoundMode.OFF,
+    val readerAmbientVolume: Float = 0.48f,
     val blueLightWarmth: Float = 0.08f,
     val screenDimmer: Float = 0f,
     val eyeRestReminderEnabled: Boolean = true,
@@ -79,6 +89,9 @@ class UserPreferences(private val context: Context) {
         val READER_PAGINATED_MODE = booleanPreferencesKey("reader_paginated_mode")
         val READER_PAGE_TURN_STYLE = stringPreferencesKey("reader_page_turn_style")
         val READER_HAPTICS_ENABLED = booleanPreferencesKey("reader_haptics_enabled")
+        val READER_PAGE_SOUND_ENABLED = booleanPreferencesKey("reader_page_sound_enabled")
+        val READER_AMBIENT_SOUND = stringPreferencesKey("reader_ambient_sound")
+        val READER_AMBIENT_VOLUME = floatPreferencesKey("reader_ambient_volume")
         val BLUE_LIGHT_WARMTH = floatPreferencesKey("blue_light_warmth")
         val SCREEN_DIMMER = floatPreferencesKey("screen_dimmer")
         val EYE_REST_REMINDER = booleanPreferencesKey("eye_rest_reminder")
@@ -115,6 +128,11 @@ class UserPreferences(private val context: Context) {
                 PageTurnStyle.valueOf(prefs[Keys.READER_PAGE_TURN_STYLE] ?: PageTurnStyle.REALISTIC_BOOK.name)
             }.getOrDefault(PageTurnStyle.REALISTIC_BOOK),
             readerHapticsEnabled = prefs[Keys.READER_HAPTICS_ENABLED] ?: true,
+            readerPageSoundEnabled = prefs[Keys.READER_PAGE_SOUND_ENABLED] ?: true,
+            readerAmbientSound = runCatching {
+                AmbientSoundMode.valueOf(prefs[Keys.READER_AMBIENT_SOUND] ?: AmbientSoundMode.OFF.name)
+            }.getOrDefault(AmbientSoundMode.OFF),
+            readerAmbientVolume = (prefs[Keys.READER_AMBIENT_VOLUME] ?: 0.48f).coerceIn(0.05f, 1.0f),
             blueLightWarmth = prefs[Keys.BLUE_LIGHT_WARMTH] ?: 0.08f,
             screenDimmer = prefs[Keys.SCREEN_DIMMER] ?: 0f,
             eyeRestReminderEnabled = prefs[Keys.EYE_REST_REMINDER] ?: true,
@@ -180,6 +198,18 @@ class UserPreferences(private val context: Context) {
 
     suspend fun setReaderHapticsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.READER_HAPTICS_ENABLED] = enabled }
+    }
+
+    suspend fun setReaderPageSoundEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.READER_PAGE_SOUND_ENABLED] = enabled }
+    }
+
+    suspend fun setReaderAmbientSound(mode: AmbientSoundMode) {
+        context.dataStore.edit { it[Keys.READER_AMBIENT_SOUND] = mode.name }
+    }
+
+    suspend fun setReaderAmbientVolume(volume: Float) {
+        context.dataStore.edit { it[Keys.READER_AMBIENT_VOLUME] = volume.coerceIn(0.05f, 1.0f) }
     }
 
     suspend fun setEyeComfortFilters(blueLightWarmth: Float, screenDimmer: Float) {

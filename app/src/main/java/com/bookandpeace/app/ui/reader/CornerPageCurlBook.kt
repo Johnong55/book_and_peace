@@ -244,6 +244,7 @@ internal fun CornerPageCurlBook(
     palette: ReaderPalette,
     isDark: Boolean,
     haptics: BookHaptics,
+    soundEngine: BookSoundEngine,
     gestureEnabled: Boolean = true,
     onInteractionStart: () -> Unit = {},
     onPageCommitted: (Int) -> Unit,
@@ -360,6 +361,7 @@ internal fun CornerPageCurlBook(
         tipY = start.y
         curlDirection = CurlDirection.NEXT
         haptics.onPageLift()
+        soundEngine.playPageFlip()
 
         animateCurlArc(
             direction = CurlDirection.NEXT,
@@ -392,6 +394,7 @@ internal fun CornerPageCurlBook(
         tipY = start.y
         curlDirection = CurlDirection.PREV
         haptics.onPageLift()
+        soundEngine.playPageFlip()
 
         animateCurlArc(
             direction = CurlDirection.PREV,
@@ -522,6 +525,7 @@ internal fun CornerPageCurlBook(
                                             dragDir = CurlDirection.NEXT
                                             curlDirection = CurlDirection.NEXT
                                             haptics.onPageLift()
+                                            soundEngine.playPaperLift()
                                         } else {
                                             boundaryDragDir = +1
                                         }
@@ -531,6 +535,7 @@ internal fun CornerPageCurlBook(
                                             dragDir = CurlDirection.PREV
                                             curlDirection = CurlDirection.PREV
                                             haptics.onPageLift()
+                                            soundEngine.playPaperLift()
                                         } else {
                                             boundaryDragDir = -1
                                         }
@@ -606,6 +611,7 @@ internal fun CornerPageCurlBook(
                                     dragDir == CurlDirection.NEXT -> {
                                         val shouldComplete = vx < -340f || tipX < w * 0.42f
                                         if (shouldComplete) {
+                                            soundEngine.playPageFlip()
                                             animateCurlArc(
                                                 direction = CurlDirection.NEXT,
                                                 startPos = Offset(tipX, tipY),
@@ -631,6 +637,7 @@ internal fun CornerPageCurlBook(
                                     dragDir == CurlDirection.PREV -> {
                                         val shouldComplete = vx > 340f || tipX > -w * 0.10f
                                         if (shouldComplete) {
+                                            soundEngine.playPageFlip()
                                             animateCurlArc(
                                                 direction = CurlDirection.PREV,
                                                 startPos = Offset(tipX, tipY),

@@ -49,9 +49,14 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.RemoveRedEye
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,6 +100,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.bookandpeace.app.data.AppContainer
+import com.bookandpeace.app.data.local.AmbientSoundMode
 import com.bookandpeace.app.data.local.AppSettings
 import com.bookandpeace.app.data.local.BookSourceType
 import com.bookandpeace.app.data.local.ChapterEntity
@@ -242,6 +248,7 @@ fun ReaderScreen(
     var showTapGuide by remember(bookId) { mutableStateOf(true) }
     var showTocSheet by remember { mutableStateOf(false) }
     var showDisplaySheet by remember { mutableStateOf(false) }
+    var showSoundSheet by remember { mutableStateOf(false) }
 
     // Auto-dismiss subtle tap-zone guide after 3 seconds
     LaunchedEffect(bookId) {
@@ -286,6 +293,11 @@ fun ReaderScreen(
 
     val palette = readerPaletteFor(settings.readerTheme)
     val haptics = rememberBookHaptics(enabled = settings.readerHapticsEnabled)
+    val soundEngine = rememberBookSoundEngine(
+        pageSoundEnabled = settings.readerPageSoundEnabled,
+        ambientMode = settings.readerAmbientSound,
+        ambientVolume = settings.readerAmbientVolume
+    )
 
     // Native PDF engine & pager state lifted here so bottom slider & tap zones stay perfectly in sync
     val pdfEngine = if (useVisualPdfMode && hasNativePdf) {
@@ -350,6 +362,7 @@ fun ReaderScreen(
     fun goToPrevChapter(openAtLastPage: Boolean) {
         if (currentChapterIndex > 0) {
             haptics.onChapterBoundary()
+            soundEngine.playChapterTurn()
             pendingPageTarget = if (openAtLastPage) -1 else 0
             currentChapterIndex--
         } else {
@@ -360,6 +373,7 @@ fun ReaderScreen(
     fun goToNextChapter() {
         if (currentChapterIndex < chapterHeaders.lastIndex) {
             haptics.onChapterBoundary()
+            soundEngine.playChapterTurn()
             pendingPageTarget = 0
             currentChapterIndex++
         } else {
@@ -417,6 +431,7 @@ fun ReaderScreen(
                 pageTurnStyle = settings.readerPageTurnStyle,
                 palette = palette,
                 haptics = haptics,
+                soundEngine = soundEngine,
                 zoomScale = pdfZoomScale,
                 onInteractionStart = {
                     showTapGuide = false
@@ -435,6 +450,7 @@ fun ReaderScreen(
                     if (barsVisible) barsVisible = false
                     if (pdfPagerState.currentPage > 0) {
                         haptics.onPageLift()
+                        soundEngine.playPageFlip()
                         scope.launch {
                             pdfPagerState.flipToPageRealistic(
                                 targetPage = pdfPagerState.currentPage - 1,
@@ -455,6 +471,7 @@ fun ReaderScreen(
                     if (barsVisible) barsVisible = false
                     if (pdfPagerState.currentPage < pdfPagerState.pageCount - 1) {
                         haptics.onPageLift()
+                        soundEngine.playPageFlip()
                         scope.launch {
                             pdfPagerState.flipToPageRealistic(
                                 targetPage = pdfPagerState.currentPage + 1,
@@ -502,6 +519,7 @@ fun ReaderScreen(
                     settings = settings,
                     palette = palette,
                     haptics = haptics,
+                    soundEngine = soundEngine,
                     onInteractionStart = {
                         showTapGuide = false
                         if (barsVisible) barsVisible = false
@@ -900,7 +918,7 @@ fun ReaderScreen(
 
                     HorizontalDivider(color = palette.outline.copy(alpha = 0.25f))
 
-                    // 4 Big Thumb-Friendly Action Buttons
+                    // Big Thumb-Friendly Action Buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -911,14 +929,30 @@ fun ReaderScreen(
                                 icon = Icons.AutoMirrored.Filled.FormatListBulleted,
                                 label = "Mục lục",
                                 tint = palette.text,
-                                onClick = { showTocSheet = true }
+                                onClick = {
+                                    haptics.onUiTick()
+                                    showTocSheet = true
+                                }
                             )
                         }
                         ReaderQuickAction(
                             icon = Icons.Default.RemoveRedEye,
                             label = "Chữ & Mắt",
                             tint = palette.text,
-                            onClick = { showDisplaySheet = true }
+                            onClick = {
+                                haptics.onUiTick()
+                                showDisplaySheet = true
+                            }
+                        )
+                        val ambientActive = settings.readerAmbientSound != AmbientSoundMode.OFF
+                        ReaderQuickAction(
+                            icon = Icons.Default.GraphicEq,
+                            label = if (ambientActive) settings.readerAmbientSound.label else "Âm thanh",
+                            tint = if (ambientActive) palette.secondaryAccent else palette.text,
+                            onClick = {
+                                haptics.onUiTick()
+                                showSoundSheet = true
+                            }
                         )
                         ReaderQuickAction(
                             icon = if (settings.readerTheme.isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
@@ -1271,6 +1305,168 @@ fun ReaderScreen(
             }
         }
     }
+
+    // =========================================================================
+    // COZY READING SOUNDSCAPE & PAPER SFX SHEET
+    // =========================================================================
+    if (showSoundSheet) {
+        ModalBottomSheet(onDismissRequest = { showSoundSheet = false }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("Không gian âm thanh đọc sách", style = MaterialTheme.typography.titleLarge)
+
+                // 1. Realistic Paper Page-Turn SFX toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Tiếng lật giấy thật", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Âm thanh sột soạt nhẹ đồng bộ đúng nhịp kéo góc trang & rung haptic",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.readerPageSoundEnabled,
+                        onCheckedChange = { enabled ->
+                            scope.launch { container.userPreferences.setReaderPageSoundEnabled(enabled) }
+                            soundEngine.pageSoundEnabled = enabled
+                            if (enabled) {
+                                haptics.onPageSettle()
+                                soundEngine.playPageFlip()
+                            }
+                        }
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                // 2. Ambient Reading Soundscapes (2x2 cozy card grid)
+                Text("Âm thanh nền thư giãn (Offline)", style = MaterialTheme.typography.titleSmall)
+
+                val ambientOptions = listOf(
+                    AmbientSoundMode.OFF to Icons.Default.VolumeOff,
+                    AmbientSoundMode.RAIN to Icons.Default.WaterDrop,
+                    AmbientSoundMode.FIREPLACE to Icons.Default.LocalFireDepartment,
+                    AmbientSoundMode.QUIET_NIGHT to Icons.Default.NightsStay
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ambientOptions.chunked(2).forEach { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            rowItems.forEach { (mode, icon) ->
+                                val selected = settings.readerAmbientSound == mode
+                                Surface(
+                                    color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(
+                                        width = if (selected) 1.5.dp else 1.dp,
+                                        color = if (selected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable {
+                                            haptics.onUiTick()
+                                            scope.launch { container.userPreferences.setReaderAmbientSound(mode) }
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = icon,
+                                            contentDescription = mode.label,
+                                            tint = if (selected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = mode.label,
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                                            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                                            else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = mode.subtitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Smooth real-time Ambient Volume slider
+                if (settings.readerAmbientSound != AmbientSoundMode.OFF) {
+                    Column {
+                        Text(
+                            "Âm lượng nền (${settings.readerAmbientSound.label}): ${(settings.readerAmbientVolume * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                        Slider(
+                            value = settings.readerAmbientVolume,
+                            onValueChange = { vol ->
+                                soundEngine.updateAmbient(settings.readerAmbientSound, vol)
+                                scope.launch { container.userPreferences.setReaderAmbientVolume(vol) }
+                            },
+                            valueRange = 0.08f..1.0f
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+
+                // Quick Haptic toggle right alongside Sound for the full tactile combo
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Rung xúc giác lật giấy (Haptic)", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Kết hợp cùng tiếng giấy để tạo cảm giác cầm sách thật",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.readerHapticsEnabled,
+                        onCheckedChange = { enabled ->
+                            scope.launch { container.userPreferences.setReaderHapticsEnabled(enabled) }
+                            if (enabled) {
+                                haptics.enabled = true
+                                haptics.onPageSettle()
+                            }
+                        }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
 }
 
 @Composable
@@ -1285,15 +1481,17 @@ private fun ReaderQuickAction(
         modifier = Modifier
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp)
     ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(23.dp))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(4.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
             color = tint,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -1307,6 +1505,7 @@ private fun PaginatedBookCanvas(
     settings: AppSettings,
     palette: ReaderPalette,
     haptics: BookHaptics,
+    soundEngine: BookSoundEngine,
     onInteractionStart: () -> Unit,
     onPageResolved: (Int) -> Unit,
     onBoundaryPrevChapter: () -> Unit,
@@ -1357,6 +1556,7 @@ private fun PaginatedBookCanvas(
                 palette = palette,
                 isDark = settings.readerTheme.isDark,
                 haptics = haptics,
+                soundEngine = soundEngine,
                 gestureEnabled = true,
                 onInteractionStart = onInteractionStart,
                 onPageCommitted = { newPage ->
@@ -1430,6 +1630,7 @@ private fun PaginatedBookCanvas(
                                         onInteractionStart()
                                         if (pagerState.currentPage > 0) {
                                             haptics.onPageLift()
+                                            soundEngine.playPageFlip()
                                             scope.launch {
                                                 pagerState.flipToPageRealistic(
                                                     targetPage = pagerState.currentPage - 1,
@@ -1445,6 +1646,7 @@ private fun PaginatedBookCanvas(
                                         onInteractionStart()
                                         if (pagerState.currentPage < pages.lastIndex) {
                                             haptics.onPageLift()
+                                            soundEngine.playPageFlip()
                                             scope.launch {
                                                 pagerState.flipToPageRealistic(
                                                     targetPage = pagerState.currentPage + 1,

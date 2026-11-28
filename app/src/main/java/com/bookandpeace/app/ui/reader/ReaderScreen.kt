@@ -42,6 +42,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Check
@@ -55,7 +56,6 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.RemoveRedEye
-import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.CircularProgressIndicator
@@ -1353,7 +1353,7 @@ fun ReaderScreen(
                 Text("Âm thanh nền thư giãn (Offline)", style = MaterialTheme.typography.titleSmall)
 
                 val ambientOptions = listOf(
-                    AmbientSoundMode.OFF to Icons.Default.VolumeOff,
+                    AmbientSoundMode.OFF to Icons.AutoMirrored.Filled.VolumeOff,
                     AmbientSoundMode.RAIN to Icons.Default.WaterDrop,
                     AmbientSoundMode.FIREPLACE to Icons.Default.LocalFireDepartment,
                     AmbientSoundMode.QUIET_NIGHT to Icons.Default.NightsStay

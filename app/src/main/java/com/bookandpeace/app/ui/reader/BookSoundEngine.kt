@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.bookandpeace.app.R
 import com.bookandpeace.app.data.local.AmbientSoundMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,19 +23,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.PI
-import kotlin.math.exp
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * 100% offline procedural acoustic engine for Book & Peace:
- * 1. Ultra-low-latency realistic physical paper page-turning SFX (3 organic variations + corner lift + chapter turn)
- *    synthesized with multi-band paper-friction & air-swoosh DSP and played via Android SoundPool.
+ * 100% offline acoustic engine for Book & Peace:
+ * 1. Real studio-recorded CC0 physical book page-turning audio samples (Kenney RPG Audio, 48kHz stereo OGG)
+ *    loaded directly from res/raw into Android SoundPool for ultra-low-latency (< 5ms) playback.
  * 2. Seamless stereo Ambient Reading Soundscapes (Rain, Fireplace, Quiet Night) synthesized continuously
  *    via stereo AudioTrack with smooth fade-in/fade-out ramps and zero clicks.
  */
@@ -48,7 +44,7 @@ internal class BookSoundEngine(private val context: Context) {
     @Volatile private var isPausedByLifecycle: Boolean = false
 
     private var soundPool: SoundPool? = null
-    private val flipSoundIds = IntArray(3)
+    private val flipSoundIds = IntArray(2)
     private var liftSoundId: Int = 0
     private var chapterSoundId: Int = 0
     private var lastFlipIndex = -1
@@ -58,10 +54,10 @@ internal class BookSoundEngine(private val context: Context) {
     private var ambientJob: Job? = null
 
     init {
-        initPageTurnSfxAsync()
+        initRealBookSamples()
     }
 
-    private fun initPageTurnSfxAsync() {
+    private fun initRealBookSamples() {
         val attrs = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -72,41 +68,18 @@ internal class BookSoundEngine(private val context: Context) {
             .build()
         soundPool = pool
 
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                val sfxDir = File(context.cacheDir, "book_sfx_v1").apply { mkdirs() }
-                val sr = 22050
-
-                val flipSpecs = listOf(
-                    Triple("flip_1.wav", 101, 0.28f),
-                    Triple("flip_2.wav", 202, 0.31f),
-                    Triple("flip_3.wav", 303, 0.34f)
-                )
-                flipSpecs.forEachIndexed { idx, (name, seed, durSec) ->
-                    val file = File(sfxDir, name)
-                    if (!file.exists() || file.length() < 1000L) {
-                        val pcm = synthesizePageFlipPcm(sr, durSec, seed, isChapter = false)
-                        writeMonoWav(file, pcm, sr)
-                    }
-                    flipSoundIds[idx] = pool.load(file.absolutePath, 1)
-                }
-
-                val liftFile = File(sfxDir, "lift.wav")
-                if (!liftFile.exists() || liftFile.length() < 500L) {
-                    writeMonoWav(liftFile, synthesizeCornerLiftPcm(sr, 0.095f, 404), sr)
-                }
-                liftSoundId = pool.load(liftFile.absolutePath, 1)
-
-                val chapterFile = File(sfxDir, "chapter.wav")
-                if (!chapterFile.exists() || chapterFile.length() < 1000L) {
-                    writeMonoWav(chapterFile, synthesizePageFlipPcm(sr, 0.39f, 505, isChapter = true), sr)
-                }
-                chapterSoundId = pool.load(chapterFile.absolutePath, 1)
-            }
+        runCatching {
+            // Crisp single-page turns (0.43s and 0.23s real physical book recordings)
+            flipSoundIds[0] = pool.load(context, R.raw.book_flip_1, 1)
+            flipSoundIds[1] = pool.load(context, R.raw.book_flip_2, 1)
+            // Fuller page turn (0.77s) for chapter transitions
+            chapterSoundId = pool.load(context, R.raw.book_flip_3, 1)
+            // Delicate short paper-catch rustle (0.15s) when grabbing a page corner
+            liftSoundId = pool.load(context, R.raw.book_paper_lift, 1)
         }
     }
 
-    /** Whisper-soft paper corner catch when dragging a page corner */
+    /** Whisper-soft real paper catch when grabbing & dragging a page corner */
     fun playPaperLift() {
         if (!pageSoundEnabled) return
         val now = SystemClock.elapsedRealtime()
@@ -114,11 +87,11 @@ internal class BookSoundEngine(private val context: Context) {
         lastLiftPlayMs = now
         val id = liftSoundId
         if (id != 0) {
-            soundPool?.play(id, 0.36f, 0.36f, 1, 0, 0.96f + Random.nextFloat() * 0.08f)
+            soundPool?.play(id, 0.34f, 0.34f, 1, 0, 0.98f + Random.nextFloat() * 0.05f)
         }
     }
 
-    /** Realistic multi-phase paper rustle + air swoosh + gentle landing pat */
+    /** Crisp real studio-recorded physical book page flip */
     fun playPageFlip() {
         if (!pageSoundEnabled) return
         val now = SystemClock.elapsedRealtime()
@@ -131,17 +104,17 @@ internal class BookSoundEngine(private val context: Context) {
 
         val id = flipSoundIds[idx]
         if (id != 0) {
-            val rate = 0.95f + Random.nextFloat() * 0.10f
-            soundPool?.play(id, 0.58f, 0.58f, 1, 0, rate)
+            val rate = 0.97f + Random.nextFloat() * 0.06f
+            soundPool?.play(id, 0.68f, 0.68f, 1, 0, rate)
         }
     }
 
-    /** Slightly fuller paper fold for chapter transitions */
+    /** Fuller real book page turn for chapter transitions */
     fun playChapterTurn() {
         if (!pageSoundEnabled) return
         val id = chapterSoundId
         if (id != 0) {
-            soundPool?.play(id, 0.65f, 0.65f, 1, 0, 0.96f)
+            soundPool?.play(id, 0.76f, 0.76f, 1, 0, 1.0f)
         } else {
             playPageFlip()
         }
@@ -273,128 +246,6 @@ internal fun rememberBookSoundEngine(
     }
 
     return engine
-}
-
-// =========================================================================
-// PROCEDURAL PAPER-FLIP SFX SYNTHESIS (Multi-Band Filtered Friction & Swoosh)
-// =========================================================================
-
-private fun synthesizeCornerLiftPcm(sampleRate: Int, durationSec: Float, seed: Int): ShortArray {
-    val n = (sampleRate * durationSec).toInt()
-    val out = ShortArray(n)
-    val rng = Random(seed)
-    var lp1 = 0f
-    var hpPrev = 0f
-    var hpOut = 0f
-
-    for (i in 0 until n) {
-        val t = i.toFloat() / n.toFloat()
-        // Quick delicate rise and silky fade
-        val env = sin(t * PI).toFloat() * exp(-t * 2.2f)
-        val white = rng.nextFloat() * 2f - 1f
-        // Band-pass around crisp dry paper fiber (~1.5kHz - 4.2kHz)
-        lp1 += 0.42f * (white - lp1)
-        hpOut = 0.78f * (hpOut + lp1 - hpPrev)
-        hpPrev = lp1
-        val sample = (hpOut * env * 0.55f).coerceIn(-0.95f, 0.95f)
-        out[i] = (sample * 32767f).toInt().toShort()
-    }
-    return out
-}
-
-private fun synthesizePageFlipPcm(
-    sampleRate: Int,
-    durationSec: Float,
-    seed: Int,
-    isChapter: Boolean
-): ShortArray {
-    val n = (sampleRate * durationSec).toInt()
-    val out = ShortArray(n)
-    val rng = Random(seed)
-
-    // Filter states for 3 acoustic layers:
-    // 1) Air swoosh (warm mid-low band)
-    // 2) Paper fiber rustle (crisp high-mid band)
-    // 3) Soft page-landing pat (damped low-mid thump near the end)
-    var swooshLp = 0f
-    var swooshHpPrev = 0f
-    var swooshHpOut = 0f
-
-    var fiberLp = 0f
-    var fiberHpPrev = 0f
-    var fiberHpOut = 0f
-
-    var patLp = 0f
-    val flutterFreq = if (isChapter) 15f else (18f + rng.nextFloat() * 5f)
-    val pitchShift = if (isChapter) 0.85f else 1.0f
-
-    for (i in 0 until n) {
-        val t = i.toFloat() / n.toFloat()
-        val timeSec = i.toFloat() / sampleRate.toFloat()
-        val white = rng.nextFloat() * 2f - 1f
-
-        // Layer 1: Warm curved air swoosh peaking around t = 0.42
-        val swooshEnv = exp(-((t - 0.42f) * (t - 0.42f)) / 0.055f) *
-            (0.84f + 0.16f * sin(2.0 * PI * flutterFreq * timeSec).toFloat())
-        swooshLp += (0.18f * pitchShift) * (white - swooshLp)
-        swooshHpOut = 0.91f * (swooshHpOut + swooshLp - swooshHpPrev)
-        swooshHpPrev = swooshLp
-
-        // Layer 2: Dry paper-fiber friction peaking slightly earlier (lift) + mid-arc
-        val liftPeak = exp(-((t - 0.14f) * (t - 0.14f)) / 0.012f) * 0.65f
-        val mainRustle = exp(-((t - 0.48f) * (t - 0.48f)) / 0.048f) * 0.95f
-        val settleBrush = exp(-((t - 0.80f) * (t - 0.80f)) / 0.014f) * 0.42f
-        val fiberEnv = (liftPeak + mainRustle + settleBrush) *
-            (0.88f + 0.12f * sin(2.0 * PI * (flutterFreq * 1.4f) * timeSec).toFloat())
-        fiberLp += (0.48f * pitchShift) * (white - fiberLp)
-        fiberHpOut = 0.72f * (fiberHpOut + fiberLp - fiberHpPrev)
-        fiberHpPrev = fiberLp
-
-        // Layer 3: Gentle paper-landing muted thump around t = 0.78
-        val patEnv = exp(-((t - 0.78f) * (t - 0.78f)) / 0.0055f)
-        patLp += 0.065f * (white - patLp)
-
-        // Smooth edge fade-in / fade-out so zero clicks
-        val edgeFade = when {
-            t < 0.03f -> t / 0.03f
-            t > 0.92f -> (1f - t) / 0.08f
-            else -> 1f
-        }.coerceIn(0f, 1f)
-
-        val mix = (swooshHpOut * swooshEnv * (if (isChapter) 0.72f else 0.58f) +
-            fiberHpOut * fiberEnv * 0.34f +
-            patLp * patEnv * (if (isChapter) 0.85f else 0.55f)) * edgeFade
-
-        val softClipped = (mix / (1f + kotlin.math.abs(mix) * 0.55f)).coerceIn(-0.95f, 0.95f)
-        out[i] = (softClipped * 32767f).toInt().toShort()
-    }
-    return out
-}
-
-private fun writeMonoWav(file: File, pcm: ShortArray, sampleRate: Int) {
-    val dataSize = pcm.size * 2
-    val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply {
-        put("RIFF".toByteArray())
-        putInt(36 + dataSize)
-        put("WAVE".toByteArray())
-        put("fmt ".toByteArray())
-        putInt(16) // PCM chunk size
-        putShort(1) // PCM format
-        putShort(1) // Mono
-        putInt(sampleRate)
-        putInt(sampleRate * 2) // Byte rate
-        putShort(2) // Block align
-        putShort(16) // Bits per sample
-        put("data".toByteArray())
-        putInt(dataSize)
-    }
-    val dataBuf = ByteBuffer.allocate(dataSize).order(ByteOrder.LITTLE_ENDIAN)
-    for (s in pcm) dataBuf.putShort(s)
-
-    FileOutputStream(file).use { fos ->
-        fos.write(header.array())
-        fos.write(dataBuf.array())
-    }
 }
 
 // =========================================================================
